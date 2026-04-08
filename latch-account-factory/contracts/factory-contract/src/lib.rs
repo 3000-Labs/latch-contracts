@@ -2,8 +2,8 @@
 #![allow(clippy::ref_option)]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN,
-    Env, IntoVal, Map, Val, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, panic_with_error, Address,
+    Bytes, BytesN, Env, IntoVal, Map, Val, Vec,
 };
 use stellar_accounts::{
     policies::simple_threshold::SimpleThresholdAccountParams, smart_account::Signer,
@@ -63,6 +63,11 @@ pub enum FactoryError {
     InvalidWebAuthnKey = 9,
 }
 
+#[contractevent]
+pub struct AccountCreated {
+    pub account: Address,
+}
+
 #[contract]
 pub struct Contract;
 
@@ -111,7 +116,9 @@ impl Contract {
         let signers = build_account_signers(&env, &normalized.signers);
         let policies = build_account_policies(&env, &normalized.effective_threshold, signers.len());
 
-        deployer.deploy_v2(config.smart_account_wasm_hash, (&signers, &policies))
+        let account = deployer.deploy_v2(config.smart_account_wasm_hash, (&signers, &policies));
+        AccountCreated { account: account.clone() }.publish(&env);
+        account
     }
 
     pub fn get_verifier(env: Env, signer_kind: SignerKind) -> Address {
@@ -134,6 +141,7 @@ struct NormalizedParams {
 }
 
 fn get_config(env: &Env) -> FactoryConfig {
+    env.storage().instance().extend_ttl(100, 518400);
     env.storage()
         .instance()
         .get(&DataKey::Config)
