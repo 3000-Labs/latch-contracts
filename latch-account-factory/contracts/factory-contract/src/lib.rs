@@ -1,5 +1,4 @@
 #![no_std]
-#![allow(clippy::ref_option)]
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, panic_with_error, Address,
@@ -149,7 +148,7 @@ fn get_config(env: &Env) -> FactoryConfig {
 }
 
 fn normalize_params(env: &Env, params: AccountInitParams) -> NormalizedParams {
-    if params.signers.len() == 0 {
+    if params.signers.is_empty() {
         panic_with_error!(env, FactoryError::NoSigners);
     }
 
