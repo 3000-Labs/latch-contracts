@@ -18,10 +18,10 @@ pub enum DataKey {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FactoryConfig {
     pub smart_account_wasm_hash: BytesN<32>,
-    pub ed25519_verifier_wasm_hash: BytesN<32>,
-    pub secp256k1_verifier_wasm_hash: BytesN<32>,
-    pub webauthn_verifier_wasm_hash: BytesN<32>,
-    pub threshold_policy_wasm_hash: BytesN<32>,
+    pub ed25519_verifier: Address,
+    pub secp256k1_verifier: Address,
+    pub webauthn_verifier: Address,
+    pub threshold_policy: Address,
 }
 
 #[contracttype]
@@ -75,10 +75,10 @@ impl Contract {
     pub fn __constructor(
         env: Env,
         smart_account_wasm_hash: BytesN<32>,
-        ed25519_verifier_wasm_hash: BytesN<32>,
-        secp256k1_verifier_wasm_hash: BytesN<32>,
-        webauthn_verifier_wasm_hash: BytesN<32>,
-        threshold_policy_wasm_hash: BytesN<32>,
+        ed25519_verifier: Address,
+        secp256k1_verifier: Address,
+        webauthn_verifier: Address,
+        threshold_policy: Address,
     ) {
         if env.storage().instance().has(&DataKey::Config) {
             panic_with_error!(&env, FactoryError::AlreadyInitialized);
@@ -86,12 +86,13 @@ impl Contract {
 
         let config = FactoryConfig {
             smart_account_wasm_hash,
-            ed25519_verifier_wasm_hash,
-            secp256k1_verifier_wasm_hash,
-            webauthn_verifier_wasm_hash,
-            threshold_policy_wasm_hash,
+            ed25519_verifier,
+            secp256k1_verifier,
+            webauthn_verifier,
+            threshold_policy,
         };
         env.storage().instance().set(&DataKey::Config, &config);
+        env.storage().instance().extend_ttl(100, 518400);
     }
 
     pub fn get_account_address(env: Env, params: AccountInitParams) -> Address {
@@ -112,8 +113,8 @@ impl Contract {
             return account_address;
         }
 
-        let signers = build_account_signers(&env, &normalized.signers);
-        let policies = build_account_policies(&env, &normalized.effective_threshold, signers.len());
+        let signers = build_account_signers(&env, &config, &normalized.signers);
+        let policies = build_account_policies(&env, &config, &normalized.effective_threshold, signers.len());
 
         let account = deployer.deploy_v2(config.smart_account_wasm_hash, (&signers, &policies));
         AccountCreated { account: account.clone() }.publish(&env);
@@ -121,14 +122,16 @@ impl Contract {
     }
 
     pub fn get_verifier(env: Env, signer_kind: SignerKind) -> Address {
-        singleton_address(&env, singleton_salt(&env, signer_kind_label(signer_kind)))
+        let config = get_config(&env);
+        match signer_kind {
+            SignerKind::Ed25519 => config.ed25519_verifier,
+            SignerKind::Secp256k1 => config.secp256k1_verifier,
+            SignerKind::WebAuthn => config.webauthn_verifier,
+        }
     }
 
     pub fn get_threshold_policy(env: Env) -> Address {
-        singleton_address(
-            &env,
-            singleton_salt(&env, b"latch.factory.policy.threshold.v1"),
-        )
+        get_config(&env).threshold_policy
     }
 }
 
@@ -210,24 +213,34 @@ fn validate_key_shape(env: &Env, signer: &ExternalSignerInit) {
     }
 }
 
-fn build_account_signers(env: &Env, signers: &Vec<ExternalSignerInit>) -> Vec<Signer> {
+fn build_account_signers(
+    env: &Env,
+    config: &FactoryConfig,
+    signers: &Vec<ExternalSignerInit>,
+) -> Vec<Signer> {
     let mut account_signers = Vec::new(env);
     for signer in signers.iter() {
-        let verifier = ensure_verifier(env, signer.signer_kind);
+        let verifier = match signer.signer_kind {
+            SignerKind::Ed25519 => config.ed25519_verifier.clone(),
+            SignerKind::Secp256k1 => config.secp256k1_verifier.clone(),
+            SignerKind::WebAuthn => config.webauthn_verifier.clone(),
+        };
         account_signers.push_back(Signer::External(verifier, signer.key_data));
     }
     account_signers
 }
 
-fn build_account_policies(env: &Env, threshold: &u32, signer_count: u32) -> Map<Address, Val> {
+fn build_account_policies(
+    env: &Env,
+    config: &FactoryConfig,
+    threshold: &u32,
+    signer_count: u32,
+) -> Map<Address, Val> {
     let mut policies = Map::new(env);
 
     if signer_count > 1 {
-        let threshold_policy = ensure_threshold_policy(env);
-        let install_params = SimpleThresholdAccountParams {
-            threshold: *threshold,
-        };
-        policies.set(threshold_policy, install_params.into_val(env));
+        let install_params = SimpleThresholdAccountParams { threshold: *threshold };
+        policies.set(config.threshold_policy.clone(), install_params.into_val(env));
     }
 
     policies
@@ -249,68 +262,11 @@ fn compute_account_deploy_salt(env: &Env, params: &NormalizedParams) -> BytesN<3
     env.crypto().sha256(&preimage).to_bytes()
 }
 
-fn ensure_verifier(env: &Env, signer_kind: SignerKind) -> Address {
-    let config = get_config(env);
-    let (salt, wasm_hash) = match signer_kind {
-        SignerKind::Ed25519 => (
-            singleton_salt(env, signer_kind_label(signer_kind)),
-            config.ed25519_verifier_wasm_hash,
-        ),
-        SignerKind::Secp256k1 => (
-            singleton_salt(env, signer_kind_label(signer_kind)),
-            config.secp256k1_verifier_wasm_hash,
-        ),
-        SignerKind::WebAuthn => (
-            singleton_salt(env, signer_kind_label(signer_kind)),
-            config.webauthn_verifier_wasm_hash,
-        ),
-    };
-
-    ensure_singleton_contract(env, salt, wasm_hash)
-}
-
-fn ensure_threshold_policy(env: &Env) -> Address {
-    let config = get_config(env);
-    let salt = singleton_salt(env, b"latch.factory.policy.threshold.v1");
-    ensure_singleton_contract(env, salt, config.threshold_policy_wasm_hash)
-}
-
-fn ensure_singleton_contract(env: &Env, salt: BytesN<32>, wasm_hash: BytesN<32>) -> Address {
-    let deployer = env.deployer().with_current_contract(salt);
-    let address = deployer.deployed_address();
-
-    if address.executable().is_none() {
-        deployer.deploy_v2(wasm_hash, ());
-    }
-
-    address
-}
-
-fn singleton_address(env: &Env, salt: BytesN<32>) -> Address {
-    env.deployer()
-        .with_current_contract(salt)
-        .deployed_address()
-}
-
-fn singleton_salt(env: &Env, label: &[u8]) -> BytesN<32> {
-    env.crypto()
-        .sha256(&Bytes::from_slice(env, label))
-        .to_bytes()
-}
-
 fn signer_kind_code(kind: SignerKind) -> u8 {
     match kind {
         SignerKind::Ed25519 => 0x01,
         SignerKind::Secp256k1 => 0x02,
         SignerKind::WebAuthn => 0x03,
-    }
-}
-
-fn signer_kind_label(kind: SignerKind) -> &'static [u8] {
-    match kind {
-        SignerKind::Ed25519 => b"latch.factory.verifier.ed25519.v1",
-        SignerKind::Secp256k1 => b"latch.factory.verifier.secp256k1.v1",
-        SignerKind::WebAuthn => b"latch.factory.verifier.webauthn.v1",
     }
 }
 
