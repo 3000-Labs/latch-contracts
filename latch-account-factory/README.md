@@ -125,7 +125,7 @@ Pure computation. Validates and canonicalizes `params`, then returns the determi
 fn create_account(env: Env, params: AccountInitParams) -> Address
 ```
 
-Validates, canonicalizes, derives the account address, and deploys it. If an account already exists at that address, returns it immediately without re-deploying (idempotent). Lazily deploys required verifier singletons and the threshold policy singleton on first use.
+Validates, canonicalizes, derives the account address, and deploys it. If an account already exists at that address, returns it immediately without re-deploying (idempotent). The verifier and threshold-policy contracts are not deployed by the factory; they must already exist and are referenced from the stored constructor config.
 
 Emits `AccountCreated { account: Address }` on first deployment only.
 

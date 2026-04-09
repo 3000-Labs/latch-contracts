@@ -68,16 +68,16 @@ fn install_factory(env: &Env) -> FactorySetup<'_> {
 /// call create_account and don't need real deployed singletons.
 fn install_factory_stub(env: &Env) -> ContractClient<'_> {
     let zero_hash = BytesN::from_array(env, &[0; 32]);
-    let fake = Address::generate(env);
+    let singleton = env.register(dummy_singleton::WASM, ());
 
     let contract_id = env.register(
         Contract,
         (
             zero_hash,
-            fake.clone(),
-            fake.clone(),
-            fake.clone(),
-            fake,
+            singleton.clone(),
+            singleton.clone(),
+            singleton.clone(),
+            singleton,
         ),
     );
 
@@ -128,6 +128,33 @@ fn same_params_same_address() {
         client.get_account_address(&params),
         client.get_account_address(&params)
     );
+}
+
+#[test]
+fn constructor_rejects_undeployed_singletons() {
+    let env = Env::default();
+    let zero_hash = BytesN::from_array(&env, &[0; 32]);
+    let fake = Address::generate(&env);
+
+    // env.register() runs the constructor synchronously and panics if it
+    // panics — there is no try_register() in Soroban test utils. This is
+    // the only case in the test suite where catch_unwind is unavoidable:
+    // constructor-level failures cannot be caught with try_* client methods
+    // because no client exists until registration succeeds.
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        env.register(
+            Contract,
+            (
+                zero_hash,
+                fake.clone(),
+                fake.clone(),
+                fake.clone(),
+                fake.clone(),
+            ),
+        );
+    }));
+
+    assert!(result.is_err());
 }
 
 #[test]

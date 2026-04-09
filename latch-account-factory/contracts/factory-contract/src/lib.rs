@@ -25,7 +25,7 @@ pub struct FactoryConfig {
 }
 
 #[contracttype]
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SignerKind {
     Ed25519,
     Secp256k1,
@@ -33,7 +33,7 @@ pub enum SignerKind {
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExternalSignerInit {
     pub signer_kind: SignerKind,
     pub key_data: Bytes,
@@ -60,6 +60,10 @@ pub enum FactoryError {
     InvalidEd25519Key = 7,
     InvalidSecp256k1Key = 8,
     InvalidWebAuthnKey = 9,
+    InvalidEd25519Verifier = 10,
+    InvalidSecp256k1Verifier = 11,
+    InvalidWebAuthnVerifier = 12,
+    InvalidThresholdPolicy = 13,
 }
 
 #[contractevent]
@@ -83,6 +87,14 @@ impl Contract {
         if env.storage().instance().has(&DataKey::Config) {
             panic_with_error!(&env, FactoryError::AlreadyInitialized);
         }
+        validate_singleton_address(&env, &ed25519_verifier, FactoryError::InvalidEd25519Verifier);
+        validate_singleton_address(
+            &env,
+            &secp256k1_verifier,
+            FactoryError::InvalidSecp256k1Verifier,
+        );
+        validate_singleton_address(&env, &webauthn_verifier, FactoryError::InvalidWebAuthnVerifier);
+        validate_singleton_address(&env, &threshold_policy, FactoryError::InvalidThresholdPolicy);
 
         let config = FactoryConfig {
             smart_account_wasm_hash,
@@ -183,14 +195,38 @@ fn canonicalize_signers(env: &Env, signers: &Vec<ExternalSignerInit>) -> Vec<Ext
 
     for signer in signers.iter() {
         validate_key_shape(env, &signer);
+        let mut inserted = false;
+        let mut idx = 0u32;
 
-        match canonical.binary_search(&signer) {
-            Ok(_) => panic_with_error!(env, FactoryError::DuplicateSigner),
-            Err(pos) => canonical.insert(pos, signer),
+        while idx < canonical.len() {
+            let existing = canonical.get(idx).unwrap();
+            match compare_signers(&existing, &signer) {
+                core::cmp::Ordering::Equal => {
+                    panic_with_error!(env, FactoryError::DuplicateSigner);
+                }
+                core::cmp::Ordering::Greater => {
+                    canonical.insert(idx, signer.clone());
+                    inserted = true;
+                    break;
+                }
+                core::cmp::Ordering::Less => {
+                    idx += 1;
+                }
+            }
+        }
+
+        if !inserted {
+            canonical.push_back(signer);
         }
     }
 
     canonical
+}
+
+fn compare_signers(left: &ExternalSignerInit, right: &ExternalSignerInit) -> core::cmp::Ordering {
+    signer_kind_code(left.signer_kind)
+        .cmp(&signer_kind_code(right.signer_kind))
+        .then_with(|| left.key_data.cmp(&right.key_data))
 }
 
 fn validate_key_shape(env: &Env, signer: &ExternalSignerInit) {
@@ -210,6 +246,12 @@ fn validate_key_shape(env: &Env, signer: &ExternalSignerInit) {
                 panic_with_error!(env, FactoryError::InvalidWebAuthnKey);
             }
         }
+    }
+}
+
+fn validate_singleton_address(env: &Env, address: &Address, error: FactoryError) {
+    if address.executable().is_none() {
+        panic_with_error!(env, error);
     }
 }
 
