@@ -1,6 +1,6 @@
 # Latch Account Factory
 
-A deterministic, idempotent smart account factory for Soroban. Validates and canonicalizes signer inputs, derives account addresses before deployment, and lazily deploys shared verifier and policy singletons.
+A deterministic, idempotent smart account factory for Soroban. Validates and canonicalizes signer inputs, derives account addresses before deployment, and deploys smart account instances against pre-deployed shared verifier and policy contracts.
 
 ## Table of Contents
 
@@ -26,29 +26,33 @@ A deterministic, idempotent smart account factory for Soroban. Validates and can
 ## Architecture Overview
 
 ```
-                        ┌─────────────────────┐
-caller ────────────────▶│   Factory Contract  │
-                        │                     │
-                        │  - validates input  │
-                        │  - derives address  │
-                        │  - lazily deploys   │
-                        │    singletons       │
-                        │  - deploys account  │
-                        └─────────┬───────────┘
-                                  │ deploys
-                    ┌─────────────┼──────────────────┐
-                    ▼             ▼                   ▼
-           ┌──────────────┐  ┌──────────┐  ┌─────────────────┐
-           │ Smart Account│  │Verifier  │  │Threshold Policy │
-           │  (per user)  │  │Singleton │  │   Singleton     │
-           │              │  │(shared)  │  │   (shared)      │
-           └──────┬───────┘  └──────────┘  └─────────────────┘
-                  │ references verifier
-                  │ for each signer
-                  └──────────────────────▶ verifier.verify(payload, key_data, sig)
+  (deployed before factory)
+  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+  │ ed25519-verifier │  │secp256k1-verifier│  │webauthn-verifier │  │threshold-policy  │
+  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
+           │ address              │ address              │ address              │ address
+           └──────────────────────┴──────────────────────┴──────────┬──────────┘
+                                                                     │ passed in at construction
+                                                          ┌──────────▼──────────┐
+caller ──────────────────────────────────────────────────▶│  Factory Contract   │
+                                                          │                     │
+                                                          │  - validates input  │
+                                                          │  - derives address  │
+                                                          │  - deploys account  │
+                                                          └──────────┬──────────┘
+                                                                     │ deploy_v2
+                                                          ┌──────────▼──────────┐
+                                                          │   Smart Account     │
+                                                          │   (per user)        │
+                                                          │                     │
+                                                          │ Signer::External(   │
+                                                          │   verifier_addr,    │──▶ verifier.verify(...)
+                                                          │   key_data          │
+                                                          │ )                   │
+                                                          └─────────────────────┘
 ```
 
-The factory is the **only** deployment path for Latch smart accounts. There are three separate singleton verifier contracts — one per signer kind — that are shared across every account on the network. The threshold policy is a fourth shared singleton, only deployed when a multisig account is first created.
+The factory is the **only** deployment path for Latch smart accounts. The four singleton contracts (three verifiers + threshold policy) are deployed independently before the factory and passed in as addresses at construction. The factory only ever deploys smart account instances — one per user.
 
 The factory itself holds no user state. All user-specific data lives in the deployed smart account contracts.
 
@@ -133,7 +137,7 @@ Emits `AccountCreated { account: Address }` on first deployment only.
 fn get_verifier(env: Env, signer_kind: SignerKind) -> Address
 ```
 
-Returns the deterministic address of the verifier singleton for the given signer kind. The contract may or may not be deployed at that address yet — use `address.executable().is_some()` to check. Useful for clients that need to display or reference verifier addresses.
+Returns the address of the verifier for the given signer kind, as stored in the factory config. The verifier is always deployed — it was a prerequisite for deploying the factory. Useful for clients that need to display or reference verifier addresses.
 
 ---
 
@@ -143,7 +147,7 @@ Returns the deterministic address of the verifier singleton for the given signer
 fn get_threshold_policy(env: Env) -> Address
 ```
 
-Returns the deterministic address of the threshold policy singleton. Same caveats as `get_verifier`.
+Returns the address of the threshold policy, as stored in the factory config. Like the verifiers, it is always deployed before the factory.
 
 ---
 

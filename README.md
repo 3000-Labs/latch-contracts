@@ -1,22 +1,98 @@
-# Soroban Project
+# Latch Contracts
 
-## Project Structure
+Soroban smart contracts for the Latch auth layer. Provides deterministic smart account creation with support for Ed25519, Secp256k1, and WebAuthn signers.
 
-This repository uses the recommended structure for a Soroban project:
+## Overview
 
-```text
-.
-├── contracts
-│   └── hello_world
-│       ├── src
-│       │   ├── lib.rs
-│       │   └── test.rs
-│       └── Cargo.toml
-├── Cargo.toml
-└── README.md
+Latch accounts are Soroban smart accounts — programmable wallets that replace private-key-only authorization with flexible multi-signer, multi-policy authorization. Users can sign transactions with a Phantom wallet, a MetaMask wallet, a passkey (Face ID, Touch ID, fingerprint), or any combination of the three.
+
+The system is built on the [OpenZeppelin Stellar Contracts](https://github.com/OpenZeppelin/stellar-contracts) smart account framework.
+
+## Repository Structure
+
+This repository uses a **one-workspace-per-contract-group** layout. Each contract lives in its own root-level Rust workspace so that build, test, and deployment scopes stay small and independent.
+
+```
+latch-contracts/
+├── latch-account-factory/       # ✅ Complete — Factory contract workspace
+├── latch-smart-account/         # 🔜 Smart account contract workspace
+├── latch-verifiers/             # 🔜 Verifier contracts workspace
+│   ├── ed25519-verifier/
+│   ├── secp256k1-verifier/
+│   └── webauthn-verifier/
+├── latch-threshold-policy/      # 🔜 Threshold policy workspace
+├── contracts/                   # Placeholder (scaffold artifact, unused)
+├── factory-spec.md              # Behavioral spec for the factory
+└── PLAN.md                      # v1 architecture plan
 ```
 
-- New Soroban contracts can be put in `contracts`, each in their own directory. There is already a `hello_world` contract in there to get you started.
-- If you initialized this project with any other example contracts via `--with-example`, those contracts will be in the `contracts` directory as well.
-- Contracts should have their own `Cargo.toml` files that rely on the top-level `Cargo.toml` workspace for their dependencies.
-- Frontend libraries can be added to the top-level directory as well. If you initialized this project with a frontend template via `--frontend-template` you will have those files already included.
+## Contracts
+
+### Factory — `latch-account-factory/` ✅
+
+The canonical entrypoint for creating Latch smart accounts. Validates and canonicalizes signer inputs, derives deterministic account addresses, and deploys new smart account instances.
+
+**Key properties:**
+- Address derivation is deterministic — same params always produce the same address
+- Signer input order does not affect the derived address (canonical sort applied)
+- Idempotent — calling `create_account` twice with the same params returns the existing account
+- The same signer set can own multiple accounts via an explicit `account_salt`
+- Verifier and policy contracts are pre-deployed and passed in at factory construction — the factory only ever deploys smart account instances
+
+See [`latch-account-factory/README.md`](latch-account-factory/README.md) for full documentation.
+
+### Smart Account — `latch-smart-account/` 🔜
+
+OZ-based programmable wallet contract. Implements `CustomAccountInterface`, `SmartAccount`, and `ExecutionEntryPoint`. Initialized with a set of signers and optional policies by the factory.
+
+### Verifiers — `latch-verifiers/` 🔜
+
+Stateless singleton contracts that verify signatures on behalf of smart accounts. One contract per signer kind, shared across all accounts on the network.
+
+| Contract | Signer type | Key format |
+|---|---|---|
+| `ed25519-verifier` | Phantom, Stellar wallets | 32-byte Ed25519 public key |
+| `secp256k1-verifier` | MetaMask, EVM wallets | 65-byte uncompressed secp256k1 key |
+| `webauthn-verifier` | Passkeys, Face ID, Touch ID, YubiKey | 65-byte P-256 key + credential ID |
+
+### Threshold Policy — `latch-threshold-policy/` 🔜
+
+OZ simple threshold policy. Enforces M-of-N authorization for multisig accounts. Deployed as a singleton shared across all multisig accounts.
+
+## Deployment Order
+
+Before a factory can be deployed, all singleton contracts must already exist on the network. The required order is:
+
+```
+1. stellar contract install   # upload smart account wasm, capture hash
+2. stellar contract deploy    ed25519-verifier
+3. stellar contract deploy    secp256k1-verifier
+4. stellar contract deploy    webauthn-verifier
+5. stellar contract deploy    threshold-policy
+6. stellar contract deploy    factory  (pass smart_account_wasm_hash + 4 addresses)
+```
+
+## Development
+
+### Prerequisites
+
+```bash
+# Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Stellar CLI (v25.2.0+)
+cargo install --locked stellar-cli
+```
+
+### Build and test the factory
+
+```bash
+cd latch-account-factory
+stellar contract build --package factory-contract
+cargo test
+```
+
+## Spec and Planning
+
+- [`factory-spec.md`](factory-spec.md) — Detailed behavioral specification for the factory contract (validation rules, address derivation formula, canonicalization, worked examples)
+- [`PLAN.md`](PLAN.md) — v1 architecture plan covering all contracts in scope
