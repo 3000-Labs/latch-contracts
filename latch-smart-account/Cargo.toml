@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+  "contracts/smart-account",
+]
+
+[workspace.dependencies]
+soroban-sdk = "25.0.2"
+stellar-accounts = { git = "https://github.com/OpenZeppelin/stellar-contracts.git", rev = "187ad25428a21bf829fb6f123238e3cddb24e02a", package = "stellar-accounts" }
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+
+# For more information about this profile see https://soroban.stellar.org/docs/basic-tutorials/logging#cargotoml-profile
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true
