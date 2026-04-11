@@ -6,3 +6,9 @@ target
 .stellar
 
 references
+
+# Claude Code memory
+memory/
+
+# Soroban test snapshots
+**/test_snapshots/
