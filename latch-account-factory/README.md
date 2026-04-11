@@ -2,13 +2,17 @@
 
 A deterministic, idempotent smart account factory for Soroban. Validates and canonicalizes signer inputs, derives account addresses before deployment, and deploys smart account instances against pre-deployed shared verifier and policy contracts.
 
+It supports both:
+- existing Stellar `G...` account holders through delegated signers
+- external wallet users through verifier-backed external signers
+
 ## Table of Contents
 
 - [Architecture Overview](#architecture-overview)
 - [Workspace Structure](#workspace-structure)
 - [Public Interface](#public-interface)
 - [Key Concepts](#key-concepts)
-  - [Signer Kinds](#signer-kinds)
+  - [Signer Inputs](#signer-inputs)
   - [Address Derivation](#address-derivation)
   - [Singleton Contracts](#singleton-contracts)
   - [Threshold Policy](#threshold-policy)
@@ -45,8 +49,10 @@ caller ────────────────────────�
                                                           │   Smart Account     │
                                                           │   (per user)        │
                                                           │                     │
-                                                          │ Signer::External(   │
-                                                          │   verifier_addr,    │──▶ verifier.verify(...)
+                                                          │ Signer::Delegated   │──▶ native Stellar auth
+                                                          │ or                  │
+                                                          │ Signer::External(   │──▶ verifier.verify(...)
+                                                          │   verifier_addr,    │
                                                           │   key_data          │
                                                           │ )                   │
                                                           └─────────────────────┘
@@ -153,9 +159,16 @@ Returns the address of the threshold policy, as stored in the factory config. Li
 
 ## Key Concepts
 
-### Signer Kinds
+### Signer Inputs
 
-Three signer kinds are supported in v1:
+Two signer families are supported in v1:
+
+| Family | Shape | Notes |
+|---|---|---|
+| `Delegated(Address)` | existing Stellar `G...` account address | Uses native Stellar account auth |
+| `External(ExternalSignerInit)` | verifier-backed external signer | Used for Phantom, MetaMask/Rabby, and passkeys |
+
+External signer kinds:
 
 | Kind | `key_data` format | Key length | Notes |
 |---|---|---|---|
@@ -163,7 +176,7 @@ Three signer kinds are supported in v1:
 | `Secp256k1` | Uncompressed public key | 65 bytes, first byte `0x04` | EVM-compatible, recovery-based verification |
 | `WebAuthn` | 65-byte P-256 pubkey + credential ID | > 65 bytes, first byte `0x04` | Covers passkeys, Touch ID, Face ID, hardware keys |
 
-The factory performs **shape validation only** — it checks lengths and prefixes but does not verify signatures. Cryptographic verification is the verifier contract's responsibility.
+The factory performs **shape validation only** for external signers — it checks lengths and prefixes but does not verify signatures. Cryptographic verification is the verifier contract's responsibility.
 
 **WebAuthn covers:** Apple Touch ID, Apple Face ID, Android biometrics, Android PIN, Windows Hello, YubiKey, and any device that implements the WebAuthn standard. The underlying cryptographic primitive is always P-256 (secp256r1). The biometric or PIN is just the local unlock mechanism — it never leaves the device.
 
@@ -185,20 +198,25 @@ LatchAccountSaltV1 = SHA256(
   account_salt                ||   // 32 bytes
   signer_count                ||   // 4 bytes big-endian
   for each canonical signer:
-    signer_kind_code          ||   // 1 byte (0x01/0x02/0x03)
-    key_data_length           ||   // 4 bytes big-endian
-    key_data                  ||   // variable
+    signer_code               ||   // 1 byte (0x00/0x01/0x02/0x03)
+    signer_data_length        ||   // 4 bytes big-endian
+    signer_data               ||   // variable
   effective_threshold              // 4 bytes big-endian
 )
 ```
 
-Signer kind codes (stable, part of the address derivation surface — must not change in v1):
+Signer codes (stable, part of the address derivation surface — must not change in v1):
 
 | Kind | Code |
 |---|---|
+| `Delegated(Address)` | `0x00` |
 | `Ed25519` | `0x01` |
 | `Secp256k1` | `0x02` |
 | `WebAuthn` | `0x03` |
+
+Where:
+- delegated signer data is the signer's `Address::to_xdr(env)` bytes
+- external signer data is the signer's `key_data`
 
 The final account address is then:
 
@@ -253,8 +271,11 @@ The threshold policy is only deployed and installed for accounts with 2 or more 
 The same signer set can create multiple independent accounts by using different `account_salt` values:
 
 ```
-signer: [Ed25519(pubkey_A)], threshold: None, account_salt: [0x01...] → Account 1
-signer: [Ed25519(pubkey_A)], threshold: None, account_salt: [0x02...] → Account 2
+signer: [External(Ed25519(pubkey_A))], threshold: None, account_salt: [0x01...] → Account 1
+signer: [External(Ed25519(pubkey_A))], threshold: None, account_salt: [0x02...] → Account 2
+
+signer: [Delegated(G_user_A)], threshold: None, account_salt: [0x01...] → Account 3
+signer: [Delegated(G_user_A)], threshold: None, account_salt: [0x02...] → Account 4
 ```
 
 The `account_salt` is a **protocol input**, not a display label. Product code should:
@@ -269,7 +290,7 @@ The `account_salt` is a **protocol input**, not a display label. Product code sh
 | Check | Error |
 |---|---|
 | Zero signers | `NoSigners` |
-| Duplicate `(signer_kind, key_data)` | `DuplicateSigner` |
+| Duplicate signer input | `DuplicateSigner` |
 | Multisig with no threshold | `MissingThreshold` |
 | Threshold `= 0` or `> n` | `InvalidThreshold` |
 | Single-signer with threshold `> 1` | `InvalidThreshold` |
@@ -406,6 +427,8 @@ Covers:
 | `create_account_with_webauthn_signer` | WebAuthn full deployment path |
 | `create_account_multisig_deploys_at_precomputed_address` | Multisig address matches precomputed |
 | `create_account_mixed_signers_multisig` | All three signer kinds in one account |
+| `create_account_with_delegated_signer` | Existing Stellar `G...` user onboarding path |
+| `create_account_with_delegated_and_external_multisig` | Mixed native + external signer account |
 
 ### Regenerating test wasm
 

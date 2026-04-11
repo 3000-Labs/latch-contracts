@@ -48,8 +48,15 @@ struct ExternalSignerInit {
 ```
 
 ```rust
+enum AccountSignerInit {
+    Delegated(Address),
+    External(ExternalSignerInit),
+}
+```
+
+```rust
 struct AccountInitParams {
-    signers: Vec<ExternalSignerInit>,
+    signers: Vec<AccountSignerInit>,
     threshold: Option<u32>,
     account_salt: BytesN<32>,
 }
@@ -122,10 +129,12 @@ Rules:
 
 ### 6.2 Duplicate Signers
 
-Two signers are duplicates if both are equal in:
+Two signers are duplicates if:
 
-- `signer_kind`
-- `key_data`
+- both are delegated signers with the same `Address`
+- or both are external signers with the same:
+  - `signer_kind`
+  - `key_data`
 
 Duplicates must be rejected.
 
@@ -166,7 +175,17 @@ Important implication:
 The factory performs shape validation only.
 It does not perform cryptographic verification.
 
-### 7.1 Ed25519
+### 7.1 Delegated
+
+Expected input:
+
+- a valid Soroban `Address`
+
+Factory checks:
+
+- no additional shape validation is required beyond `Address` decoding
+
+### 7.2 Ed25519
 
 Expected `key_data`:
 
@@ -176,7 +195,7 @@ Factory checks:
 
 - `key_data.len() == 32`
 
-### 7.2 WebAuthn
+### 7.3 WebAuthn
 
 Expected `key_data` format:
 
@@ -190,7 +209,7 @@ Factory checks:
 
 The verifier is responsible for actual signature and assertion verification.
 
-### 7.3 Secp256k1
+### 7.4 Secp256k1
 
 Provisional v1 format:
 
@@ -219,22 +238,28 @@ Canonicalization is required before:
 
 Each signer is identified by:
 
-- `signer_kind`
-- `key_data`
+- delegated signer:
+  - `Address`
+- external signer:
+  - `signer_kind`
+  - `key_data`
 
 ### 8.2 Canonical Ordering
 
 Signers must be sorted by:
 
-1. `signer_kind` discriminant
-2. lexicographic order of `key_data`
+1. signer-family code
+2. for delegated signers: `Address` ordering
+3. for external signers:
+   - `signer_kind` code
+   - lexicographic order of `key_data`
 
 This ensures input order does not affect account address.
 
 Example:
 
-- `[WebAuthn(B), Ed25519(A)]`
-- `[Ed25519(A), WebAuthn(B)]`
+- `[External(WebAuthn(B)), External(Ed25519(A))]`
+- `[External(Ed25519(A)), External(WebAuthn(B))]`
 
 must resolve to the same canonical signer set.
 
@@ -249,9 +274,9 @@ Salt preimage must include:
 - version tag
 - canonical signer count
 - each canonical signer's:
-  - `signer_kind`
-  - `key_data` length
-  - `key_data`
+  - signer family code
+  - signer data length
+  - signer data
 - effective threshold
 - `account_salt`
 
@@ -273,10 +298,10 @@ H(
   version_tag ||
   account_salt ||
   signer_count ||
-  signer_1_kind || signer_1_key_len || signer_1_key_data ||
-  signer_2_kind || signer_2_key_len || signer_2_key_data ||
+  signer_1_code || signer_1_data_len || signer_1_data ||
+  signer_2_code || signer_2_data_len || signer_2_data ||
   ...
-  signer_n_kind || signer_n_key_len || signer_n_key_data ||
+  signer_n_code || signer_n_data_len || signer_n_data ||
   effective_threshold
 )
 ```
@@ -287,9 +312,11 @@ Where:
 - `version_tag` is the fixed string `latch.factory.account.v1`
 - `account_salt` is the explicit multiplicity input provided by the caller
 - `signer_count` is the number of canonical signers
-- `signer_i_kind` is the canonical encoded discriminant for `SignerKind`
-- `signer_i_key_len` is the byte length of `signer_i_key_data`
-- `signer_i_key_data` is the raw signer public-key-like data
+- `signer_i_code` is the canonical encoded signer-family code
+- `signer_i_data_len` is the byte length of `signer_i_data`
+- `signer_i_data` is:
+  - for delegated signers: `Address::to_xdr(env)`
+  - for external signers: raw `key_data`
 - `effective_threshold` is the normalized threshold value used by the account
 
 The exact serialization implementation must preserve unambiguous boundaries between fields.
@@ -301,6 +328,7 @@ The signer kind encoding used in the salt preimage must be stable and versioned.
 
 Recommended v1 mapping:
 
+- `Delegated(Address) = 0x00`
 - `Ed25519 = 0x01`
 - `Secp256k1 = 0x02`
 - `WebAuthn = 0x03`
@@ -386,7 +414,15 @@ __constructor(signers: Vec<Signer>, policies: Map<Address, Val>)
 
 ### 11.1 Signer Translation
 
-Each `ExternalSignerInit` becomes:
+Each signer input becomes:
+
+- delegated signer:
+
+```rust
+Signer::Delegated(address)
+```
+
+- external signer:
 
 ```rust
 Signer::External(verifier_address, key_data)
@@ -408,7 +444,7 @@ Where `verifier_address` is the shared singleton for that signer kind.
 ### 12.1 `get_account_address`
 
 1. validate `params`
-2. structurally validate signer `key_data`
+2. structurally validate signer inputs
 3. canonicalize signer list
 4. normalize effective threshold
 5. compute account salt
@@ -418,7 +454,7 @@ Where `verifier_address` is the shared singleton for that signer kind.
 ### 12.2 `create_account`
 
 1. validate `params`
-2. structurally validate signer `key_data`
+2. structurally validate signer inputs
 3. canonicalize signer list
 4. normalize effective threshold
 5. derive target account address
@@ -455,6 +491,7 @@ The factory must reject:
 - invalid threshold
 - missing explicit threshold for multisig
 - malformed `key_data`
+- malformed delegated signer input
 - unknown signer kind
 - missing config wasm hash
 - contract deployment failure
@@ -481,7 +518,7 @@ Input:
 
 ```rust
 signers = [
-  { signer_kind: Ed25519, key_data: <32-byte pubkey> }
+  External({ signer_kind: Ed25519, key_data: <32-byte pubkey> })
 ]
 threshold = None
 account_salt = <32-byte salt A>
@@ -494,18 +531,36 @@ Behavior:
 - deploy/reuse `ed25519-verifier`
 - deploy smart account with one external signer
 
-### 16.2 2-of-3 Mixed Multisig
+### 16.2 Single Delegated Account
 
 Input:
 
 ```rust
 signers = [
-  { signer_kind: Ed25519, key_data: <32-byte pubkey A> },
-  { signer_kind: Secp256k1, key_data: <65-byte pubkey B> },
-  { signer_kind: WebAuthn, key_data: <65-byte p256 pubkey + credential id> },
+  Delegated(<G-address-backed Address>)
+]
+threshold = None
+account_salt = <32-byte salt B>
+```
+
+Behavior:
+
+- valid
+- no threshold policy
+- deploy smart account with one delegated signer
+
+### 16.3 2-of-3 Mixed Multisig
+
+Input:
+
+```rust
+signers = [
+  Delegated(<G-address-backed Address A>),
+  External({ signer_kind: Secp256k1, key_data: <65-byte pubkey B> }),
+  External({ signer_kind: WebAuthn, key_data: <65-byte p256 pubkey + credential id> }),
 ]
 threshold = Some(2)
-account_salt = <32-byte salt B>
+account_salt = <32-byte salt C>
 ```
 
 Behavior:
@@ -514,20 +569,20 @@ Behavior:
 - canonicalize signer order
 - deploy/reuse required verifier singletons
 - deploy/reuse threshold policy singleton
-- deploy smart account with 3 external signers
+- deploy smart account with mixed delegated and external signers
 - install threshold policy with `threshold = 2`
 
-### 16.3 Invalid Multisig Without Threshold
+### 16.4 Invalid Multisig Without Threshold
 
 Input:
 
 ```rust
 signers = [
-  { signer_kind: Ed25519, key_data: <pubkey A> },
-  { signer_kind: Ed25519, key_data: <pubkey B> },
+  Delegated(<G-address-backed Address A>),
+  External({ signer_kind: Ed25519, key_data: <pubkey B> }),
 ]
 threshold = None
-account_salt = <32-byte salt C>
+account_salt = <32-byte salt D>
 ```
 
 Behavior:

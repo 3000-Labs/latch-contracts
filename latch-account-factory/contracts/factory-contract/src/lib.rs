@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, panic_with_error, Address,
-    Bytes, BytesN, Env, IntoVal, Map, Val, Vec,
+    Bytes, BytesN, Env, IntoVal, Map, Val, Vec, xdr::ToXdr,
 };
 use stellar_accounts::{
     policies::simple_threshold::SimpleThresholdAccountParams, smart_account::Signer,
@@ -41,8 +41,15 @@ pub struct ExternalSignerInit {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AccountSignerInit {
+    Delegated(Address),
+    External(ExternalSignerInit),
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AccountInitParams {
-    pub signers: Vec<ExternalSignerInit>,
+    pub signers: Vec<AccountSignerInit>,
     pub threshold: Option<u32>,
     pub account_salt: BytesN<32>,
 }
@@ -149,7 +156,7 @@ impl Contract {
 
 #[derive(Clone)]
 struct NormalizedParams {
-    signers: Vec<ExternalSignerInit>,
+    signers: Vec<AccountSignerInit>,
     effective_threshold: u32,
     account_salt: BytesN<32>,
 }
@@ -190,11 +197,11 @@ fn normalize_params(env: &Env, params: AccountInitParams) -> NormalizedParams {
     }
 }
 
-fn canonicalize_signers(env: &Env, signers: &Vec<ExternalSignerInit>) -> Vec<ExternalSignerInit> {
+fn canonicalize_signers(env: &Env, signers: &Vec<AccountSignerInit>) -> Vec<AccountSignerInit> {
     let mut canonical = Vec::new(env);
 
     for signer in signers.iter() {
-        validate_key_shape(env, &signer);
+        validate_signer_shape(env, &signer);
         let mut inserted = false;
         let mut idx = 0u32;
 
@@ -223,29 +230,45 @@ fn canonicalize_signers(env: &Env, signers: &Vec<ExternalSignerInit>) -> Vec<Ext
     canonical
 }
 
-fn compare_signers(left: &ExternalSignerInit, right: &ExternalSignerInit) -> core::cmp::Ordering {
-    signer_kind_code(left.signer_kind)
-        .cmp(&signer_kind_code(right.signer_kind))
-        .then_with(|| left.key_data.cmp(&right.key_data))
+fn compare_signers(left: &AccountSignerInit, right: &AccountSignerInit) -> core::cmp::Ordering {
+    account_signer_code(left)
+        .cmp(&account_signer_code(right))
+        .then_with(|| match (left, right) {
+            (AccountSignerInit::Delegated(left_addr), AccountSignerInit::Delegated(right_addr)) => {
+                left_addr.cmp(right_addr)
+            }
+            (
+                AccountSignerInit::External(left_external),
+                AccountSignerInit::External(right_external),
+            ) => signer_kind_code(left_external.signer_kind)
+                .cmp(&signer_kind_code(right_external.signer_kind))
+                .then_with(|| left_external.key_data.cmp(&right_external.key_data)),
+            _ => core::cmp::Ordering::Equal,
+        })
 }
 
-fn validate_key_shape(env: &Env, signer: &ExternalSignerInit) {
-    match signer.signer_kind {
-        SignerKind::Ed25519 => {
-            if signer.key_data.len() != 32 {
-                panic_with_error!(env, FactoryError::InvalidEd25519Key);
+fn validate_signer_shape(env: &Env, signer: &AccountSignerInit) {
+    match signer {
+        AccountSignerInit::Delegated(_) => {}
+        AccountSignerInit::External(external) => match external.signer_kind {
+            SignerKind::Ed25519 => {
+                if external.key_data.len() != 32 {
+                    panic_with_error!(env, FactoryError::InvalidEd25519Key);
+                }
             }
-        }
-        SignerKind::Secp256k1 => {
-            if signer.key_data.len() != 65 || signer.key_data.get(0).unwrap_or(0) != 0x04 {
-                panic_with_error!(env, FactoryError::InvalidSecp256k1Key);
+            SignerKind::Secp256k1 => {
+                if external.key_data.len() != 65 || external.key_data.get(0).unwrap_or(0) != 0x04
+                {
+                    panic_with_error!(env, FactoryError::InvalidSecp256k1Key);
+                }
             }
-        }
-        SignerKind::WebAuthn => {
-            if signer.key_data.len() <= 65 || signer.key_data.get(0).unwrap_or(0) != 0x04 {
-                panic_with_error!(env, FactoryError::InvalidWebAuthnKey);
+            SignerKind::WebAuthn => {
+                if external.key_data.len() <= 65 || external.key_data.get(0).unwrap_or(0) != 0x04
+                {
+                    panic_with_error!(env, FactoryError::InvalidWebAuthnKey);
+                }
             }
-        }
+        },
     }
 }
 
@@ -258,16 +281,23 @@ fn validate_singleton_address(env: &Env, address: &Address, error: FactoryError)
 fn build_account_signers(
     env: &Env,
     config: &FactoryConfig,
-    signers: &Vec<ExternalSignerInit>,
+    signers: &Vec<AccountSignerInit>,
 ) -> Vec<Signer> {
     let mut account_signers = Vec::new(env);
     for signer in signers.iter() {
-        let verifier = match signer.signer_kind {
-            SignerKind::Ed25519 => config.ed25519_verifier.clone(),
-            SignerKind::Secp256k1 => config.secp256k1_verifier.clone(),
-            SignerKind::WebAuthn => config.webauthn_verifier.clone(),
-        };
-        account_signers.push_back(Signer::External(verifier, signer.key_data));
+        match signer {
+            AccountSignerInit::Delegated(address) => {
+                account_signers.push_back(Signer::Delegated(address));
+            }
+            AccountSignerInit::External(external) => {
+                let verifier = match external.signer_kind {
+                    SignerKind::Ed25519 => config.ed25519_verifier.clone(),
+                    SignerKind::Secp256k1 => config.secp256k1_verifier.clone(),
+                    SignerKind::WebAuthn => config.webauthn_verifier.clone(),
+                };
+                account_signers.push_back(Signer::External(verifier, external.key_data));
+            }
+        }
     }
     account_signers
 }
@@ -294,14 +324,30 @@ fn compute_account_deploy_salt(env: &Env, params: &NormalizedParams) -> BytesN<3
     preimage.extend_from_array(&params.signers.len().to_be_bytes());
 
     for signer in params.signers.iter() {
-        preimage.extend_from_array(&[signer_kind_code(signer.signer_kind)]);
-        preimage.extend_from_array(&signer.key_data.len().to_be_bytes());
-        preimage.append(&signer.key_data);
+        preimage.extend_from_array(&[account_signer_code(&signer)]);
+        match signer {
+            AccountSignerInit::Delegated(address) => {
+                let encoded = address.to_xdr(env);
+                preimage.extend_from_array(&encoded.len().to_be_bytes());
+                preimage.append(&encoded);
+            }
+            AccountSignerInit::External(external) => {
+                preimage.extend_from_array(&external.key_data.len().to_be_bytes());
+                preimage.append(&external.key_data);
+            }
+        }
     }
 
     preimage.extend_from_array(&params.effective_threshold.to_be_bytes());
 
     env.crypto().sha256(&preimage).to_bytes()
+}
+
+fn account_signer_code(signer: &AccountSignerInit) -> u8 {
+    match signer {
+        AccountSignerInit::Delegated(_) => 0x00,
+        AccountSignerInit::External(external) => signer_kind_code(external.signer_kind),
+    }
 }
 
 fn signer_kind_code(kind: SignerKind) -> u8 {

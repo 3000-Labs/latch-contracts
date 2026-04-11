@@ -109,6 +109,22 @@ fn webauthn_signer(env: &Env, byte: u8) -> ExternalSignerInit {
     }
 }
 
+fn delegated_signer(env: &Env) -> AccountSignerInit {
+    AccountSignerInit::Delegated(Address::generate(env))
+}
+
+fn ext_ed25519_signer(env: &Env, byte: u8) -> AccountSignerInit {
+    AccountSignerInit::External(ed25519_signer(env, byte))
+}
+
+fn ext_secp256k1_signer(env: &Env, byte: u8) -> AccountSignerInit {
+    AccountSignerInit::External(secp256k1_signer(env, byte))
+}
+
+fn ext_webauthn_signer(env: &Env, byte: u8) -> AccountSignerInit {
+    AccountSignerInit::External(webauthn_signer(env, byte))
+}
+
 // ---------------------------------------------------------------------------
 // Address derivation — get_account_address
 // ---------------------------------------------------------------------------
@@ -119,7 +135,7 @@ fn same_params_same_address() {
     let client = install_factory_stub(&env);
 
     let params = AccountInitParams {
-        signers: soroban_sdk::vec![&env, ed25519_signer(&env, 7)],
+        signers: soroban_sdk::vec![&env, ext_ed25519_signer(&env, 7)],
         threshold: None,
         account_salt: BytesN::from_array(&env, &[9; 32]),
     };
@@ -162,8 +178,8 @@ fn signer_order_does_not_change_address() {
     let env = Env::default();
     let client = install_factory_stub(&env);
 
-    let signer_a = ed25519_signer(&env, 1);
-    let signer_b = secp256k1_signer(&env, 2);
+    let signer_a = ext_ed25519_signer(&env, 1);
+    let signer_b = ext_secp256k1_signer(&env, 2);
     let salt = BytesN::from_array(&env, &[3; 32]);
 
     let addr_1 = client.get_account_address(&AccountInitParams {
@@ -185,7 +201,7 @@ fn account_salt_changes_address() {
     let env = Env::default();
     let client = install_factory_stub(&env);
 
-    let signers = soroban_sdk::vec![&env, ed25519_signer(&env, 5)];
+    let signers = soroban_sdk::vec![&env, ext_ed25519_signer(&env, 5)];
 
     let addr_1 = client.get_account_address(&AccountInitParams {
         signers: signers.clone(),
@@ -209,12 +225,12 @@ fn different_key_data_changes_address() {
     let salt = BytesN::from_array(&env, &[5; 32]);
 
     let addr_1 = client.get_account_address(&AccountInitParams {
-        signers: soroban_sdk::vec![&env, ed25519_signer(&env, 1)],
+        signers: soroban_sdk::vec![&env, ext_ed25519_signer(&env, 1)],
         threshold: None,
         account_salt: salt.clone(),
     });
     let addr_2 = client.get_account_address(&AccountInitParams {
-        signers: soroban_sdk::vec![&env, ed25519_signer(&env, 2)],
+        signers: soroban_sdk::vec![&env, ext_ed25519_signer(&env, 2)],
         threshold: None,
         account_salt: salt,
     });
@@ -230,7 +246,7 @@ fn different_key_data_changes_address() {
 fn duplicate_signers_are_rejected() {
     let env = Env::default();
     let client = install_factory_stub(&env);
-    let signer = ed25519_signer(&env, 9);
+    let signer = ext_ed25519_signer(&env, 9);
 
     assert!(client
         .try_get_account_address(&AccountInitParams {
@@ -248,7 +264,11 @@ fn multisig_requires_explicit_threshold() {
 
     assert!(client
         .try_get_account_address(&AccountInitParams {
-            signers: soroban_sdk::vec![&env, ed25519_signer(&env, 1), ed25519_signer(&env, 2)],
+            signers: soroban_sdk::vec![
+                &env,
+                ext_ed25519_signer(&env, 1),
+                ext_ed25519_signer(&env, 2)
+            ],
             threshold: None,
             account_salt: BytesN::from_array(&env, &[8; 32]),
         })
@@ -262,7 +282,11 @@ fn threshold_zero_is_rejected() {
 
     assert!(client
         .try_get_account_address(&AccountInitParams {
-            signers: soroban_sdk::vec![&env, ed25519_signer(&env, 1), ed25519_signer(&env, 2)],
+            signers: soroban_sdk::vec![
+                &env,
+                ext_ed25519_signer(&env, 1),
+                ext_ed25519_signer(&env, 2)
+            ],
             threshold: Some(0),
             account_salt: BytesN::from_array(&env, &[1; 32]),
         })
@@ -276,7 +300,11 @@ fn threshold_above_signer_count_is_rejected() {
 
     assert!(client
         .try_get_account_address(&AccountInitParams {
-            signers: soroban_sdk::vec![&env, ed25519_signer(&env, 1), ed25519_signer(&env, 2)],
+            signers: soroban_sdk::vec![
+                &env,
+                ext_ed25519_signer(&env, 1),
+                ext_ed25519_signer(&env, 2)
+            ],
             threshold: Some(3),
             account_salt: BytesN::from_array(&env, &[2; 32]),
         })
@@ -292,10 +320,10 @@ fn invalid_ed25519_key_is_rejected() {
         .try_get_account_address(&AccountInitParams {
             signers: soroban_sdk::vec![
                 &env,
-                ExternalSignerInit {
+                AccountSignerInit::External(ExternalSignerInit {
                     signer_kind: SignerKind::Ed25519,
                     key_data: Bytes::from_array(&env, &[1u8; 31]),
-                }
+                })
             ],
             threshold: None,
             account_salt: BytesN::from_array(&env, &[6; 32]),
@@ -315,10 +343,10 @@ fn invalid_secp256k1_key_is_rejected() {
         .try_get_account_address(&AccountInitParams {
             signers: soroban_sdk::vec![
                 &env,
-                ExternalSignerInit {
+                AccountSignerInit::External(ExternalSignerInit {
                     signer_kind: SignerKind::Secp256k1,
                     key_data: Bytes::from_array(&env, &raw),
-                }
+                })
             ],
             threshold: None,
             account_salt: BytesN::from_array(&env, &[7; 32]),
@@ -338,10 +366,10 @@ fn invalid_webauthn_key_is_rejected() {
         .try_get_account_address(&AccountInitParams {
             signers: soroban_sdk::vec![
                 &env,
-                ExternalSignerInit {
+                AccountSignerInit::External(ExternalSignerInit {
                     signer_kind: SignerKind::WebAuthn,
                     key_data: Bytes::from_array(&env, &raw),
-                }
+                })
             ],
             threshold: None,
             account_salt: BytesN::from_array(&env, &[8; 32]),
@@ -400,7 +428,7 @@ fn create_account_deploys_at_precomputed_address() {
     let setup = install_factory(&env);
 
     let params = AccountInitParams {
-        signers: soroban_sdk::vec![&env, ed25519_signer(&env, 1)],
+        signers: soroban_sdk::vec![&env, ext_ed25519_signer(&env, 1)],
         threshold: None,
         account_salt: BytesN::from_array(&env, &[10; 32]),
     };
@@ -417,7 +445,7 @@ fn create_account_deploys_contract_at_address() {
     let setup = install_factory(&env);
 
     let params = AccountInitParams {
-        signers: soroban_sdk::vec![&env, ed25519_signer(&env, 2)],
+        signers: soroban_sdk::vec![&env, ext_ed25519_signer(&env, 2)],
         threshold: None,
         account_salt: BytesN::from_array(&env, &[11; 32]),
     };
@@ -433,7 +461,7 @@ fn create_account_emits_account_created_event() {
     let setup = install_factory(&env);
 
     let params = AccountInitParams {
-        signers: soroban_sdk::vec![&env, ed25519_signer(&env, 3)],
+        signers: soroban_sdk::vec![&env, ext_ed25519_signer(&env, 3)],
         threshold: None,
         account_salt: BytesN::from_array(&env, &[12; 32]),
     };
@@ -449,7 +477,7 @@ fn create_account_is_idempotent() {
     let setup = install_factory(&env);
 
     let params = AccountInitParams {
-        signers: soroban_sdk::vec![&env, ed25519_signer(&env, 4)],
+        signers: soroban_sdk::vec![&env, ext_ed25519_signer(&env, 4)],
         threshold: None,
         account_salt: BytesN::from_array(&env, &[13; 32]),
     };
@@ -470,7 +498,7 @@ fn create_account_with_secp256k1_signer() {
     let setup = install_factory(&env);
 
     let params = AccountInitParams {
-        signers: soroban_sdk::vec![&env, secp256k1_signer(&env, 5)],
+        signers: soroban_sdk::vec![&env, ext_secp256k1_signer(&env, 5)],
         threshold: None,
         account_salt: BytesN::from_array(&env, &[30; 32]),
     };
@@ -488,7 +516,7 @@ fn create_account_with_webauthn_signer() {
     let setup = install_factory(&env);
 
     let params = AccountInitParams {
-        signers: soroban_sdk::vec![&env, webauthn_signer(&env, 6)],
+        signers: soroban_sdk::vec![&env, ext_webauthn_signer(&env, 6)],
         threshold: None,
         account_salt: BytesN::from_array(&env, &[31; 32]),
     };
@@ -506,7 +534,11 @@ fn create_account_multisig_deploys_at_precomputed_address() {
     let setup = install_factory(&env);
 
     let params = AccountInitParams {
-        signers: soroban_sdk::vec![&env, ed25519_signer(&env, 1), ed25519_signer(&env, 2)],
+        signers: soroban_sdk::vec![
+            &env,
+            ext_ed25519_signer(&env, 1),
+            ext_ed25519_signer(&env, 2)
+        ],
         threshold: Some(2),
         account_salt: BytesN::from_array(&env, &[15; 32]),
     };
@@ -526,12 +558,72 @@ fn create_account_mixed_signers_multisig() {
     let params = AccountInitParams {
         signers: soroban_sdk::vec![
             &env,
-            ed25519_signer(&env, 1),
-            secp256k1_signer(&env, 2),
-            webauthn_signer(&env, 3)
+            ext_ed25519_signer(&env, 1),
+            ext_secp256k1_signer(&env, 2),
+            ext_webauthn_signer(&env, 3)
         ],
         threshold: Some(2),
         account_salt: BytesN::from_array(&env, &[32; 32]),
+    };
+
+    let expected = setup.client.get_account_address(&params);
+    let actual = setup.client.create_account(&params);
+
+    assert_eq!(expected, actual);
+    assert!(actual.executable().is_some());
+}
+
+#[test]
+fn delegated_signer_changes_address() {
+    let env = Env::default();
+    let client = install_factory_stub(&env);
+
+    let addr_1 = client.get_account_address(&AccountInitParams {
+        signers: soroban_sdk::vec![&env, delegated_signer(&env)],
+        threshold: None,
+        account_salt: BytesN::from_array(&env, &[40; 32]),
+    });
+    let addr_2 = client.get_account_address(&AccountInitParams {
+        signers: soroban_sdk::vec![&env, delegated_signer(&env)],
+        threshold: None,
+        account_salt: BytesN::from_array(&env, &[40; 32]),
+    });
+
+    assert_ne!(addr_1, addr_2);
+}
+
+#[test]
+fn create_account_with_delegated_signer() {
+    let env = Env::default();
+    let setup = install_factory(&env);
+    let delegated = delegated_signer(&env);
+
+    let params = AccountInitParams {
+        signers: soroban_sdk::vec![&env, delegated],
+        threshold: None,
+        account_salt: BytesN::from_array(&env, &[41; 32]),
+    };
+
+    let expected = setup.client.get_account_address(&params);
+    let actual = setup.client.create_account(&params);
+
+    assert_eq!(expected, actual);
+    assert!(actual.executable().is_some());
+}
+
+#[test]
+fn create_account_with_delegated_and_external_multisig() {
+    let env = Env::default();
+    let setup = install_factory(&env);
+
+    let params = AccountInitParams {
+        signers: soroban_sdk::vec![
+            &env,
+            delegated_signer(&env),
+            ext_webauthn_signer(&env, 9)
+        ],
+        threshold: Some(2),
+        account_salt: BytesN::from_array(&env, &[42; 32]),
     };
 
     let expected = setup.client.get_account_address(&params);
