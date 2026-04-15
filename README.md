@@ -1,8 +1,9 @@
 <img width="4096" height="1536" alt="Latch 7" src="https://github.com/user-attachments/assets/e7042fc8-6b72-4ceb-933f-bd8a0a55c883" />
 
-Soroban smart contracts for the Latch auth layer. Provides deterministic smart account creation with support for Ed25519, Secp256k1, and WebAuthn signers.
 
 ## Overview
+
+Soroban smart contracts for the Latch auth layer. Provides deterministic smart account creation with support for Ed25519, Secp256k1, and WebAuthn signers.
 
 Latch accounts are Soroban smart accounts — programmable wallets that replace private-key-only authorization with flexible multi-signer, multi-policy authorization. Users can sign transactions with a Phantom wallet, a MetaMask wallet, a passkey (Face ID, Touch ID, fingerprint), or any combination of the three.
 
