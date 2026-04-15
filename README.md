@@ -1,3 +1,5 @@
+<img width="4096" height="3072" alt="Latch 4" src="https://github.com/user-attachments/assets/ac8beb54-4301-4f85-ac72-d3289be9a683" />
+
 # Latch Contracts
 
 Soroban smart contracts for the Latch auth layer. Provides deterministic smart account creation with support for Ed25519, Secp256k1, and WebAuthn signers.
