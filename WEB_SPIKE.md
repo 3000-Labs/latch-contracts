@@ -1,228 +1,499 @@
-# Web Spike: Factory + Smart Account Integration
+# Web Dev Spike: Factory Onboarding for G-Address and WebAuthn Users
 
-## Status
+## Goal
 
-The Ed25519 (Phantom) path is **fully working on testnet** as of 2026-04-11.
-The factory, smart account, auth flow, and demo UI are all deployed and proven.
+Give the web developer one narrow spike that proves the current Latch account-creation stack works end to end.
 
-The next developer task is the **WebAuthn path** — passkey-based account creation
-and auth through the same factory and smart account.
+This spike must prove two onboarding modes through the new factory:
 
----
+- an existing Stellar `G...` account holder can create a smart account through a delegated signer
+- a passkey user can create a smart account through a real WebAuthn verifier
 
-## What Is Deployed (Testnet)
+This spike is about account creation and deterministic address derivation first. It is not yet the full production verifier rollout.
 
-| Contract | Address | WASM Hash |
-|---|---|---|
-| Ed25519 Phantom Verifier | `CBFSXM22BNS4L6OVDGF4TMXVE5GQTXJCUODJCW5N2Q7LWHW4I33ZSB5A` | `272ad675...` |
-| Smart Account (WASM only) | — | `c00f972c...` |
-| Factory | `CC6C6KYZSRX6UHHXIWJCC3JC6PS5R62BEX6NIXL777DYTH6EAPYZXAGG` | `c4f286f2...` |
-| Counter (test target) | `CBRCNPTZ7YPP5BCGF42QSUWPYZQW6OJDPNQ4HDEYO7VI5Z6AVWWNEZ2U` | — |
+## What Is Under Test
 
-WebAuthn and Secp256k1 verifiers are stubs — not production contracts.
+Contracts we own and want the web developer to integrate against:
 
----
+- `/Users/user/SuperFranky/latch-contracts/latch-account-factory/contracts/factory-contract`
+- `/Users/user/SuperFranky/latch-contracts/latch-smart-account`
 
-## What the Factory Expects
+Temporary reference contract we will use only for the real passkey path:
 
-### `create_account(params)` and `get_account_address(params)`
+- `/Users/user/SuperFranky/latch/reference/g2c/contracts/webauthn-verifier`
 
-Both take a single `AccountInitParams` argument encoded as an ScVal map:
+Temporary placeholder singleton for unused verifier and policy slots:
 
+- `/Users/user/SuperFranky/latch-contracts/latch-account-factory/contracts/dummy-singleton`
+
+## Important Design Constraint
+
+The factory does not deploy verifier contracts itself in the current implementation.
+It expects addresses for already-deployed singleton contracts at construction time.
+
+That means this spike has two different deployment shapes:
+
+- the smart-account contract is installed as Wasm code and referenced by hash
+- verifier and policy contracts are deployed first and passed to the factory as addresses
+
+## Contracts to Build
+
+### 1. Latch smart account
+
+Path:
+
+- `/Users/user/SuperFranky/latch-contracts/latch-smart-account`
+
+Build:
+
+```bash
+cd /Users/user/SuperFranky/latch-contracts/latch-smart-account
+cargo build --target wasm32v1-none --release
 ```
-{
-  account_salt: Bytes,       // 32-byte SHA256 hash (deterministic, derived from pubkey + version)
-  signers: Vec<SignerInit>,  // list of signers
-  threshold: Void,           // null for single-signer; threshold policy not yet used
+
+Expected artifact:
+
+- `/Users/user/SuperFranky/latch-contracts/latch-smart-account/target/wasm32v1-none/release/smart_account.wasm`
+
+Use:
+
+- install this Wasm and capture the returned `smart_account_wasm_hash`
+- do not deploy this contract directly for the spike
+
+### 2. Latch factory
+
+Path:
+
+- `/Users/user/SuperFranky/latch-contracts/latch-account-factory/contracts/factory-contract`
+
+Build:
+
+```bash
+cd /Users/user/SuperFranky/latch-contracts/latch-account-factory
+cargo build --target wasm32v1-none --release -p factory-contract -p dummy-singleton
+```
+
+Expected artifacts:
+
+- `/Users/user/SuperFranky/latch-contracts/latch-account-factory/target/wasm32v1-none/release/factory_contract.wasm`
+- `/Users/user/SuperFranky/latch-contracts/latch-account-factory/target/wasm32v1-none/release/dummy_singleton.wasm`
+
+Use:
+
+- deploy `factory_contract.wasm`
+- deploy `dummy_singleton.wasm` as many times as needed for unused singleton slots
+
+### 3. Real WebAuthn verifier
+
+Path:
+
+- `/Users/user/SuperFranky/latch/reference/g2c/contracts/webauthn-verifier`
+
+Build:
+
+```bash
+cd /Users/user/SuperFranky/latch/reference/g2c
+cargo build --target wasm32v1-none --release -p g2c-webauthn-verifier
+```
+
+Expected artifact:
+
+- `/Users/user/SuperFranky/latch/reference/g2c/target/wasm32v1-none/release/g2c_webauthn_verifier.wasm`
+
+Use:
+
+- deploy this contract once
+- pass its deployed address into the factory constructor as `webauthn_verifier`
+
+## Deployment Order
+
+Use local Soroban first.
+The developer can use Stellar CLI or an existing deploy script, but the order and arguments should stay exactly like this.
+
+### CLI skeleton
+
+These commands are templates.
+Replace `local` and `alice` with the network and source account the developer is actually using.
+
+Install Latch smart-account Wasm:
+
+```bash
+stellar contract install \
+  --wasm /Users/user/SuperFranky/latch-contracts/latch-smart-account/target/wasm32v1-none/release/smart_account.wasm \
+  --source alice \
+  --network local
+```
+
+Deploy singleton contracts:
+
+```bash
+stellar contract deploy \
+  --wasm /Users/user/SuperFranky/latch/reference/g2c/target/wasm32v1-none/release/g2c_webauthn_verifier.wasm \
+  --source alice \
+  --network local
+```
+
+```bash
+stellar contract deploy \
+  --wasm /Users/user/SuperFranky/latch-contracts/latch-account-factory/target/wasm32v1-none/release/dummy_singleton.wasm \
+  --source alice \
+  --network local
+```
+
+Deploy the factory with constructor args:
+
+```bash
+stellar contract deploy \
+  --wasm /Users/user/SuperFranky/latch-contracts/latch-account-factory/target/wasm32v1-none/release/factory_contract.wasm \
+  --source alice \
+  --network local \
+  -- \
+  --smart-account-wasm-hash <SMART_ACCOUNT_WASM_HASH> \
+  --ed25519-verifier <DUMMY_ED25519_VERIFIER_ADDRESS> \
+  --secp256k1-verifier <DUMMY_SECP256K1_VERIFIER_ADDRESS> \
+  --webauthn-verifier <WEBAUTHN_VERIFIER_ADDRESS> \
+  --threshold-policy <DUMMY_THRESHOLD_POLICY_ADDRESS>
+```
+
+### Step 1. Install Latch smart-account Wasm
+
+Install:
+
+- `smart_account.wasm`
+
+Capture:
+
+- `SMART_ACCOUNT_WASM_HASH`
+
+Expected result:
+
+- a valid Wasm hash that the factory can use in `deploy_v2`
+
+### Step 2. Deploy singleton contracts
+
+Deploy these contract instances:
+
+- one real `g2c_webauthn_verifier`
+- one `dummy_singleton` for `ed25519_verifier`
+- one `dummy_singleton` for `secp256k1_verifier`
+- one `dummy_singleton` for `threshold_policy`
+
+Capture:
+
+- `WEBAUTHN_VERIFIER_ADDRESS`
+- `DUMMY_ED25519_VERIFIER_ADDRESS`
+- `DUMMY_SECP256K1_VERIFIER_ADDRESS`
+- `DUMMY_THRESHOLD_POLICY_ADDRESS`
+
+Expected result:
+
+- all four addresses are executable contracts
+- the factory constructor will reject fake or undeployed addresses, so this step must be real
+
+### Step 3. Deploy the factory
+
+Deploy `factory_contract.wasm` with constructor args in this exact order:
+
+```text
+smart_account_wasm_hash: BytesN<32>
+ed25519_verifier: Address
+secp256k1_verifier: Address
+webauthn_verifier: Address
+threshold_policy: Address
+```
+
+For this spike, use:
+
+```text
+smart_account_wasm_hash = SMART_ACCOUNT_WASM_HASH
+ed25519_verifier = DUMMY_ED25519_VERIFIER_ADDRESS
+secp256k1_verifier = DUMMY_SECP256K1_VERIFIER_ADDRESS
+webauthn_verifier = WEBAUTHN_VERIFIER_ADDRESS
+threshold_policy = DUMMY_THRESHOLD_POLICY_ADDRESS
+```
+
+Expected result:
+
+- factory deploy succeeds
+- `get_verifier(WebAuthn)` returns the real WebAuthn verifier address
+- `get_verifier(Ed25519)` and `get_verifier(Secp256k1)` return dummy singleton addresses
+- `get_threshold_policy()` returns the dummy threshold policy address
+
+## Factory Input Types the Web Client Must Build
+
+The web client should build these contract-level types.
+
+### Signer kinds
+
+```rust
+enum SignerKind {
+    Ed25519,
+    Secp256k1,
+    WebAuthn,
 }
 ```
 
-Where each `SignerInit` is:
+### External signer
 
-```
-{
-  key_data: Bytes,                   // raw key bytes
-  signer_kind: Vec<Symbol("Ed25519")>  // Soroban enum variant
+```rust
+struct ExternalSignerInit {
+    signer_kind: SignerKind,
+    key_data: Bytes,
 }
 ```
 
-### Salt derivation (must match server-side)
+### Account signer
 
-```typescript
-const SMART_ACCOUNT_VERSION = "factory-v2";
-const salt = sha256(publicKeyHex + SMART_ACCOUNT_VERSION);
-```
-
-The version string ensures fresh accounts. If you change it, you get a new address.
-
----
-
-## Working Implementation Reference
-
-All of this is wired up in `latch/`. Read these routes before writing anything new.
-
-### Account creation
-`latch/app/api/smart-account/factory/route.ts`
-- `GET ?pubkey=<64-char-hex>` — checks if account is deployed (reads ledger entry)
-- `POST { publicKeyHex }` — deploys account via factory, returns `smartAccountAddress`
-
-### Transaction build
-`latch/app/api/transaction/build/route.ts`
-
-Builds a simulated transaction against the counter contract and returns:
-- `txXdr` — the unsigned transaction
-- `authEntryXdr` — the auth entry requiring smart account signature
-- `authPayloadHash` — the **OZ-bound** auth digest the wallet must sign
-
-**Critical**: `authPayloadHash` is NOT just `hash(preimage)`. OZ re-hashes before
-calling verify:
-
-```typescript
-// payloadHash = hash(HashIdPreimageSorobanAuthorization XDR)
-const contextRuleIdsXdr = xdr.ScVal.scvVec([xdr.ScVal.scvU32(0)]).toXDR();
-const authDigest = hash(Buffer.concat([payloadHash, contextRuleIdsXdr]));
-// authPayloadHash = authDigest.toString("hex")
-```
-
-The wallet signs `"Stellar Smart Account Auth:\n" + authPayloadHash`.
-The on-chain verifier receives `authDigest` bytes and reconstructs the same message.
-
-### Transaction submit
-`latch/app/api/transaction/submit/route.ts`
-
-Accepts:
-- `txXdr`, `authEntryXdr` — from build route
-- `authSignatureHex` — raw 64-byte Ed25519 signature from Phantom (hex-encoded)
-- `publicKeyHex` — Phantom's 32-byte pubkey (hex-encoded)
-
-Builds the `AuthPayload` map and enforcing-mode simulates, then submits.
-
-**sig_data format**: raw `Bytes(64)` — NOT an XDR-encoded struct.
-The production verifier reconstructs the prefix internally from the hash.
-
-### Demo UI
-`latch/app/demo/page.tsx` — working end-to-end Phantom demo.
-
----
-
-## Review of Developer PR
-
-**PR #2 (kcmikee, `feat: add Stellar demo page`)** added `app/demo-stellar/page.tsx`.
-
-That page:
-- Uses `@creit.tech/stellar-wallets-kit` (Freighter, Lobstr, Albedo, xBull)
-- Connects a standard G-address wallet
-- Calls `counter.increment(publicKey)` directly — no smart account, no factory, no verifier
-
-This is useful exploratory work for understanding native Stellar wallet connectivity
-and the `StellarWalletsKit` API. It does **not** implement the spike requirements.
-The spike was about factory-based smart account creation, not standard wallet signing.
-
-That PR needs to be reviewed and either:
-1. Merged as a separate "native Stellar wallet" reference page (keep it, rename it clearly)
-2. Superseded by the factory-based demo
-
----
-
-## Next Task: WebAuthn Path
-
-This is what the developer should implement next.
-
-### What WebAuthn means here
-
-Instead of Phantom (Ed25519, external key), the user creates a passkey (P-256/secp256r1)
-on their device. The smart account is created the same way through the factory — the only
-difference is the signer kind and verifier address.
-
-The WebAuthn verifier contract is **not yet built**. The factory currently has a stub
-at `CBYYKKTEBQTJFBOVSUGXFALDTRRS6HC3QSNCKONOOGOMSJOHBTQU7LSI`.
-
-### WebAuthn spike tasks
-
-#### 1. Passkey creation (client-side)
-Create a passkey using the browser's WebAuthn API:
-```typescript
-const credential = await navigator.credentials.create({
-  publicKey: {
-    challenge: crypto.getRandomValues(new Uint8Array(32)),
-    rp: { name: "Latch", id: window.location.hostname },
-    user: { id: new Uint8Array(16), name: "user", displayName: "User" },
-    pubKeyCredParams: [{ type: "public-key", alg: -7 }], // ES256 = P-256
-    authenticatorSelection: { requireResidentKey: true, userVerification: "required" },
-  },
-});
-```
-
-Extract the P-256 public key from `credential.response.getPublicKey()`.
-The `key_data` for WebAuthn is the raw 64-byte uncompressed public key (x || y)
-OR a credential-id-prefixed format — depends on what the verifier spec defines.
-
-See: `latch-contracts/latch-verifiers/webauthn-verifier-spec.md`
-
-#### 2. Account creation via factory
-Same flow as Ed25519 but with:
-```typescript
-{
-  key_data: Bytes(<webauthn_pubkey>),
-  signer_kind: Vec<Symbol("WebAuthn")>
+```rust
+enum AccountSignerInit {
+    Delegated(Address),
+    External(ExternalSignerInit),
 }
 ```
 
-The factory will map `WebAuthn` to the webauthn_verifier address.
+### Account init params
 
-#### 3. Auth signing (WebAuthn assertion)
-Instead of Phantom's `signMessage`, use:
-```typescript
-const assertion = await navigator.credentials.get({
-  publicKey: {
-    challenge: Buffer.from(authPayloadHash, "hex"),
-    rpId: window.location.hostname,
-    userVerification: "required",
-  },
-});
+```rust
+struct AccountInitParams {
+    signers: Vec<AccountSignerInit>,
+    threshold: Option<u32>,
+    account_salt: BytesN<32>,
+}
 ```
 
-The `sig_data` for WebAuthn is more complex than Ed25519. The verifier needs:
-- the signature bytes
-- `authenticatorData`
-- `clientDataJSON`
+## Spike Flow A: Existing Stellar User with a G-Address
 
-This is covered in `latch-contracts/latch-verifiers/webauthn-verifier-spec.md`.
-The verifier contract needs to be built before this path can be tested on-chain.
+### Purpose
 
-### What the developer can prove before the verifier is built
+Prove that an existing Stellar account holder can create a Latch smart account without using a verifier-backed external wallet path.
 
-Even without a working WebAuthn verifier on-chain, the developer can prove:
-1. Passkey creation works in the browser
-2. The correct P-256 public key is extracted
-3. `create_account` via factory works with `signer_kind: WebAuthn`
-   (it will deploy but auth will fail until the real verifier is deployed)
-4. `get_account_address` is deterministic for WebAuthn params
+### Required input
 
----
+- one valid Stellar account address represented as Soroban `Address`
+- one random `account_salt` of exactly 32 bytes
 
-## Environment
+### Params to send
 
-All testnet. No local Soroban environment needed.
+Conceptual shape:
 
-```
-NEXT_PUBLIC_RPC_URL=https://soroban-testnet.stellar.org
-NEXT_PUBLIC_NETWORK_PASSPHRASE=Test SDF Network ; September 2015
-NEXT_PUBLIC_FACTORY_ADDRESS=CC6C6KYZSRX6UHHXIWJCC3JC6PS5R62BEX6NIXL777DYTH6EAPYZXAGG
-NEXT_PUBLIC_VERIFIER_ADDRESS=CBFSXM22BNS4L6OVDGF4TMXVE5GQTXJCUODJCW5N2Q7LWHW4I33ZSB5A
-NEXT_PUBLIC_SMART_ACCOUNT_WASM_HASH=c00f972cb8ed5eba151f4cd6e97519db679a7a31cc657838449b405fb9cf53c4
+```rust
+AccountInitParams {
+    signers: vec![
+        AccountSignerInit::Delegated(g_address)
+    ],
+    threshold: None,
+    account_salt: random_32_bytes,
+}
 ```
 
----
+TypeScript-friendly shape:
 
-## Success Criteria for WebAuthn Spike
+```ts
+const params = {
+  signers: [
+    {
+      tag: "Delegated",
+      values: [gAddress],
+    },
+  ],
+  threshold: null,
+  account_salt: random32ByteSalt,
+};
+```
 
-1. Browser creates a passkey and extracts a P-256 public key.
-2. `create_account` succeeds with a `WebAuthn` signer via factory.
-3. `get_account_address` returns the same address for the same passkey.
-4. A passkey assertion is obtained using the OZ-bound `authDigest` as the challenge.
-5. The signed assertion bytes are assembled into the correct `sig_data` shape
-   as specified in `webauthn-verifier-spec.md`.
-6. Once the WebAuthn verifier contract is deployed, a counter increment succeeds.
+### Calls to make
 
-Steps 1–4 are achievable now. Steps 5–6 wait on the verifier contract.
+1. Call `get_account_address(params)`
+2. Call `get_account_address(params)` again
+3. Call `create_account(params)`
+4. Call `create_account(params)` again
+5. Repeat with a different `account_salt`
+
+### Expected results
+
+The developer should prove all of these:
+
+- the first and second `get_account_address` calls return the same address
+- the first `create_account` returns exactly that same precomputed address
+- the second `create_account` returns the same address again and does not create a second account
+- changing only `account_salt` changes the derived account address
+- the returned account address is an executable contract after creation
+
+### Negative checks
+
+The developer should also show:
+
+- zero signers is rejected
+- `threshold = Some(2)` with one delegated signer is rejected
+
+## Spike Flow B: Passkey User with WebAuthn
+
+### Purpose
+
+Prove that a browser passkey can be used to create a Latch smart account through the factory using a real verifier contract.
+
+### WebAuthn key format
+
+The current verifier and factory expect:
+
+- first 65 bytes: uncompressed P-256 public key
+- remaining bytes: credential ID
+
+So:
+
+```text
+key_data = p256_uncompressed_pubkey_65_bytes || credential_id_bytes
+```
+
+Factory validation rules that must be satisfied:
+
+- total length must be greater than 65 bytes
+- first byte must be `0x04`
+
+### Required input
+
+- a real browser passkey registration or existing passkey
+- extracted uncompressed P-256 public key
+- extracted credential ID
+- one random `account_salt` of exactly 32 bytes
+
+### Params to send
+
+Conceptual shape:
+
+```rust
+AccountInitParams {
+    signers: vec![
+        AccountSignerInit::External(ExternalSignerInit {
+            signer_kind: SignerKind::WebAuthn,
+            key_data,
+        })
+    ],
+    threshold: None,
+    account_salt: random_32_bytes,
+}
+```
+
+TypeScript-friendly shape:
+
+```ts
+const params = {
+  signers: [
+    {
+      tag: "External",
+      values: [
+        {
+          signer_kind: "WebAuthn",
+          key_data: encodedKeyData,
+        },
+      ],
+    },
+  ],
+  threshold: null,
+  account_salt: random32ByteSalt,
+};
+```
+
+### Calls to make
+
+1. Register or load a passkey in the browser
+2. Extract and encode `key_data`
+3. Call `get_account_address(params)`
+4. Call `get_account_address(params)` again
+5. Call `create_account(params)`
+6. Call `create_account(params)` again
+7. Repeat with a different `account_salt`
+
+### Expected results
+
+The developer should prove all of these:
+
+- passkey registration or lookup succeeds in the browser
+- `key_data` is encoded as `65-byte uncompressed pubkey || credential ID`
+- the first and second `get_account_address` calls return the same address
+- the first `create_account` returns exactly that same precomputed address
+- the second `create_account` returns the same address again and does not create a second account
+- changing only `account_salt` changes the derived account address
+- the returned account address is an executable contract after creation
+
+### Negative checks
+
+The developer should also show:
+
+- WebAuthn `key_data` shorter than 66 bytes is rejected
+- WebAuthn `key_data` with a first byte other than `0x04` is rejected
+
+## Important Scope Limit
+
+For this spike, keep WebAuthn account creation single-signer only.
+
+Do not attempt any of these yet:
+
+- delegated + WebAuthn multisig
+- WebAuthn + Ed25519 multisig
+- WebAuthn + Secp256k1 multisig
+
+Reason:
+
+- the current spike uses a dummy threshold-policy contract for the policy slot
+- multisig account creation should wait until a real threshold-policy contract is wired in
+
+## Why Dummy Singletons Are Acceptable Here
+
+Dummy singletons are acceptable only because:
+
+- delegated single-signer flow does not need any verifier contract
+- single-signer WebAuthn flow only needs the real `webauthn_verifier`
+- single-signer flows do not install the threshold policy
+
+Dummy singletons are not acceptable for:
+
+- real Ed25519 account creation
+- real Secp256k1 account creation
+- any multisig flow that needs threshold-policy installation
+
+## Deliverable
+
+The web developer should deliver one small local-first test surface with two flows:
+
+- `Existing Stellar User`
+- `Passkey User`
+
+Minimum actions:
+
+- `Generate Salt`
+- `Get Account Address`
+- `Create Account`
+
+Minimum debug output:
+
+- chosen onboarding mode
+- signer summary
+- encoded `account_salt`
+- encoded `key_data` for WebAuthn
+- precomputed account address
+- returned account address
+- whether the created address is executable
+
+## Final Pass Criteria
+
+This spike is complete when all of the following are true:
+
+- the developer can deploy the exact contract set above
+- the factory constructor is wired with the correct Wasm hash and singleton addresses
+- delegated G-address onboarding works end to end
+- WebAuthn onboarding works end to end with a real verifier
+- idempotency is proven for both flows
+- `account_salt` multiplicity is proven for both flows
+- the developer documents any client-side encoding details needed for `Address`, `Bytes`, and `BytesN<32>`
+
+## What This Does Not Prove Yet
+
+This spike does not yet prove:
+
+- final Latch Ed25519 verifier
+- final Latch Secp256k1 verifier
+- final threshold-policy integration
+- final multi-verifier production architecture
+
+Those belong to the separate engineering spike.
