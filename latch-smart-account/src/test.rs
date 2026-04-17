@@ -4,11 +4,13 @@ extern crate std;
 
 use super::{LatchSmartAccount, LatchSmartAccountClient};
 use soroban_sdk::{
-    contract, contractimpl,
-    testutils::Address as _,
-    vec, Address, Env, IntoVal, Map, String, Symbol, Val, Vec,
+    contract, contractimpl, testutils::Address as _, vec, Address, Env, IntoVal, Map, String,
+    Symbol, Val, Vec,
 };
-use stellar_accounts::{policies::Policy, smart_account::{ContextRuleType, Signer}};
+use stellar_accounts::{
+    policies::Policy,
+    smart_account::{ContextRuleType, Signer},
+};
 
 #[contract]
 struct MockTargetContract;
@@ -16,7 +18,9 @@ struct MockTargetContract;
 #[contractimpl]
 impl MockTargetContract {
     pub fn set(e: Env, value: u32) {
-        e.storage().persistent().set(&Symbol::new(&e, "value"), &value);
+        e.storage()
+            .persistent()
+            .set(&Symbol::new(&e, "value"), &value);
     }
 
     pub fn get(e: Env) -> u32 {
@@ -119,7 +123,11 @@ fn execute_requires_self_auth() {
     let (_account_id, client) = register_account(&env, &signers, &policies);
 
     let target_id = env.register(MockTargetContract, ());
-    client.execute(&target_id, &Symbol::new(&env, "set"), &vec![&env, 1u32.into_val(&env)]);
+    client.execute(
+        &target_id,
+        &Symbol::new(&env, "set"),
+        &vec![&env, 1u32.into_val(&env)],
+    );
 }
 
 #[test]
@@ -197,7 +205,10 @@ fn add_signer_requires_self_auth() {
     let (_account_id, client) = register_account(&env, &signers, &policies);
 
     let default_rule = client.get_context_rule(&0);
-    client.add_signer(&default_rule.id, &Signer::Delegated(Address::generate(&env)));
+    client.add_signer(
+        &default_rule.id,
+        &Signer::Delegated(Address::generate(&env)),
+    );
 }
 
 #[test]
