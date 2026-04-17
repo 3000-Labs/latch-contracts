@@ -4,31 +4,11 @@ A programmable wallet contract for Soroban. Replaces static private-key authoriz
 
 Built on the [OpenZeppelin Stellar Contracts](https://github.com/OpenZeppelin/stellar-contracts) smart account framework.
 
-## Table of Contents
-
-- [What It Is](#what-it-is)
-- [How It Fits In the System](#how-it-fits-in-the-system)
-- [Public Interface](#public-interface)
-- [Key Concepts](#key-concepts)
-  - [Context Rules](#context-rules)
-  - [Signers](#signers)
-  - [Policies](#policies)
-  - [Self-Auth Protection](#self-auth-protection)
-- [Authorization Flow](#authorization-flow)
-- [Security Properties](#security-properties)
-- [Non-Goals](#non-goals)
-- [Development](#development)
-- [Testing](#testing)
-
 ---
 
 ## What It Is
 
-### For everyone
-
 A Latch Smart Account is a programmable wallet that lives on-chain. Unlike a normal Stellar account — where one private key controls everything — a Latch Smart Account can be controlled by multiple signers of different types: an existing Stellar wallet, a MetaMask wallet, a Face ID passkey, or any combination. The rules for who can authorize what are stored inside the contract and enforced by the Stellar network itself.
-
-### For developers
 
 `LatchSmartAccount` is a Soroban contract that implements three interfaces from the OpenZeppelin Stellar Contracts library:
 
@@ -39,16 +19,6 @@ A Latch Smart Account is a programmable wallet that lives on-chain. Unlike a nor
 | `ExecutionEntryPoint` | Exposes an `execute` function so the account can call other contracts with its own authorization |
 
 The contract delegates all authorization logic (`__check_auth`) and all rule management to the OpenZeppelin `stellar-accounts` library. The Latch layer is thin by design: constructor setup and a `batch_add_signer` helper.
-
-### For auditors
-
-The contract is a minimal shim over the OpenZeppelin `stellar-accounts` library. The attack surface introduced by this contract is:
-
-1. The `__constructor`: creates exactly one context rule; validates nothing itself (validation is the factory's job upstream)
-2. `batch_add_signer`: calls `smart_account::batch_add_signer` after requiring self-auth
-3. `__check_auth`: passes through to `smart_account::do_check_auth` with no pre-processing
-
-All state management, authorization checking, and policy enforcement live in the upstream `stellar-accounts` library at the pinned git revision in `Cargo.toml`. The critical trust boundary is self-auth: every mutation function requires `e.current_contract_address().require_auth()`, meaning the account's own signers must authorize any change to the account's configuration.
 
 ---
 
