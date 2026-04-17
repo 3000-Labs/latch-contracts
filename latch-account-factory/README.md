@@ -31,35 +31,9 @@ Built on [OpenZeppelin Stellar Contracts](https://github.com/OpenZeppelin/stella
 
 The factory is the only deployment path for Latch smart accounts. Singletons are deployed independently before the factory and never re-deployed by it. The factory holds no user state — all user data lives in the deployed account contracts.
 
-Deployment order:
-```
-1. stellar contract install   (upload smart account wasm → get hash)
-2. stellar contract deploy    ed25519-verifier
-3. stellar contract deploy    secp256k1-verifier
-4. stellar contract deploy    webauthn-verifier
-5. stellar contract deploy    threshold-policy
-6. stellar contract deploy    factory  (pass hash + 4 addresses)
-```
 
 ---
 
-## Workspace Structure
-
-```
-latch-account-factory/
-├── contracts/
-│   ├── factory-contract/
-│   │   ├── src/lib.rs         # Contract logic
-│   │   ├── src/test.rs        # Tests
-│   │   └── testdata/          # Compiled wasm stubs for tests
-│   │       ├── dummy_account.wasm
-│   │       └── dummy_singleton.wasm
-│   ├── dummy-account/         # Minimal account stub (test only)
-│   └── dummy-singleton/       # Minimal no-op stub (test only)
-└── Cargo.toml
-```
-
----
 
 ## Public Interface
 
