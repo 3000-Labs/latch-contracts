@@ -12,3 +12,6 @@ memory/
 
 # Soroban test snapshots
 **/test_snapshots/
+
+# workspaces
+latch-contracts.code-workspace
