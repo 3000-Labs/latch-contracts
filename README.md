@@ -16,12 +16,12 @@ This repository uses a **one-workspace-per-contract-group** layout. Each contrac
 ```
 latch-contracts/
 ├── latch-account-factory/       # ✅ Complete — Factory contract workspace
-├── latch-smart-account/         # 🔜 Smart account contract workspace
-├── latch-verifiers/             # 🔜 Verifier contracts workspace
-│   ├── ed25519-verifier/
-│   ├── secp256k1-verifier/
+├── latch-smart-account/         # ✅ Smart account contract workspace
+├── latch-verifiers/             # ⚠️ Verifier contracts workspace
+│   ├── ed25519-phantom-verifier/
+│   ├── secp256k1-verifier/      # Stub — implementation pending
 │   └── webauthn-verifier/
-├── latch-threshold-policy/      # 🔜 Threshold policy workspace
+├── latch-threshold-policy/      # ✅ Threshold policy workspace
 ├── contracts/                   # Placeholder (scaffold artifact, unused)
 ├── factory-spec.md              # Behavioral spec for the factory
 └── PLAN.md                      # v1 architecture plan
@@ -42,21 +42,21 @@ The canonical entrypoint for creating Latch smart accounts. Validates and canoni
 
 See [`latch-account-factory/README.md`](latch-account-factory/README.md) for full documentation.
 
-### Smart Account — `latch-smart-account/` 🔜
+### Smart Account — `latch-smart-account/` ✅
 
 OZ-based programmable wallet contract. Implements `CustomAccountInterface`, `SmartAccount`, and `ExecutionEntryPoint`. Initialized with a set of signers and optional policies by the factory.
 
-### Verifiers — `latch-verifiers/` 🔜
+### Verifiers — `latch-verifiers/` ⚠️
 
 Stateless singleton contracts that verify signatures on behalf of smart accounts. One contract per signer kind, shared across all accounts on the network.
 
-| Contract | Signer type | Key format |
-|---|---|---|
-| `ed25519-verifier` | Phantom, Stellar wallets | 32-byte Ed25519 public key |
-| `secp256k1-verifier` | MetaMask, EVM wallets | 65-byte uncompressed secp256k1 key |
-| `webauthn-verifier` | Passkeys, Face ID, Touch ID, YubiKey | 65-byte P-256 key + credential ID |
+| Contract | Signer type | Key format | Status |
+|---|---|---|---|
+| `ed25519-phantom-verifier` | Phantom, Stellar wallets | 32-byte Ed25519 public key | ✅ Implemented |
+| `secp256k1-verifier` | MetaMask, EVM wallets | 65-byte uncompressed secp256k1 key | 🔜 Stub |
+| `webauthn-verifier` | Passkeys, Face ID, Touch ID, YubiKey | 65-byte P-256 key + credential ID | ✅ Implemented |
 
-### Threshold Policy — `latch-threshold-policy/` 🔜
+### Threshold Policy — `latch-threshold-policy/` ✅
 
 OZ simple threshold policy. Enforces M-of-N authorization for multisig accounts. Deployed as a singleton shared across all multisig accounts.
 
