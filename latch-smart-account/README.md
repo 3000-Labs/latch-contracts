@@ -8,22 +8,8 @@ Built on [OpenZeppelin Stellar Contracts](https://github.com/OpenZeppelin/stella
 
 ## Architecture
 
-```
-  ┌─ ed25519-verifier ─┐
-  ├─ secp256k1-verifier ┤ addresses passed at construction
-  └─ webauthn-verifier ─┘
-            │
-     ┌──────▼──────┐
-     │   Factory   │ deploy_v2 (one per user)
-     └──────┬──────┘
-     ┌──────▼──────────────┐
-     │  LatchSmartAccount  │ ◀── this contract
-     │  Context Rules      │
-     │  ├ "default"        │──▶ Signer::Delegated → native auth
-     │  │  signers         │──▶ Signer::External  → verifier.verify()
-     │  └ ...more rules    │──▶ Policy contract   → enforce()
-     └─────────────────────┘
-```
+<img width="2383" height="2560" alt="smartaccount" src="https://github.com/user-attachments/assets/73b919ce-7137-4c2e-b03e-4fc45d50f999" />
+
 
 The contract implements three OpenZeppelin interfaces: `CustomAccountInterface` (`__check_auth`), `SmartAccount` (context rule CRUD), and `ExecutionEntryPoint` (`execute`). The Latch layer adds only constructor setup and `batch_add_signer`.
 
