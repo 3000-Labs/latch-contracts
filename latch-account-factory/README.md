@@ -11,7 +11,7 @@ Built on [OpenZeppelin Stellar Contracts](https://github.com/OpenZeppelin/stella
 <img width="2560" height="2095" alt="factory-architecture" src="https://github.com/user-attachments/assets/0de56bbe-00ed-412a-9445-55f4a588a639" />
 
 
-
+</br>
 The factory is the only deployment path for Latch smart accounts. Singletons are deployed independently before the factory and never re-deployed by it. The factory holds no user state — all user data lives in the deployed account contracts.
 
 
