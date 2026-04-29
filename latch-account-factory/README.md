@@ -8,7 +8,8 @@ Built on [OpenZeppelin Stellar Contracts](https://github.com/OpenZeppelin/stella
 
 ## Architecture
 
-<img width="2560" height="2095" alt="factory-architecture" src="https://github.com/user-attachments/assets/0de56bbe-00ed-412a-9445-55f4a588a639" />
+<img width="2560" height="2095" alt="factory" src="https://github.com/user-attachments/assets/eccfd0e3-a397-4a05-a2a1-6ba7b6885088" />
+
 
 
 </br>
