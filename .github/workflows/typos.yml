@@ -2,12 +2,17 @@ name: Check for typos
 
 on: [pull_request]
 
+# Least privilege: this workflow only checks out the repo and runs a spelling
+# check. It never needs write access to contents, PRs, issues, or releases.
+permissions:
+  contents: read
+
 jobs:
   check-for-typos:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout the repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Check for typos
-        uses: crate-ci/typos@v1.24.5
+        uses: crate-ci/typos@945d407a5fc9097f020969446a16f581612ab4df # v1.24.5

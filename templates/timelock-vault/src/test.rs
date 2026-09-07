@@ -2,11 +2,13 @@
 extern crate std;
 
 use soroban_sdk::{
-    testutils::{Address as _, Events as _, Ledger, MockAuth, MockAuthInvoke},
+    testutils::{
+        storage::Persistent as _, Address as _, Events as _, Ledger, MockAuth, MockAuthInvoke,
+    },
     token, Address, Env, IntoVal,
 };
 
-use crate::{TimelockVault, TimelockVaultClient};
+use crate::{DataKey, TimelockVault, TimelockVaultClient, EXTEND_AMOUNT};
 
 // ────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -309,6 +311,64 @@ fn partial_withdraw_leaves_remainder() {
     // Second withdrawal for the rest.
     client.withdraw(&token_addr, &(DEPOSIT_AMOUNT - half), &owner);
     assert_eq!(client.get_balance(&token_addr), 0);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// State lifetime / TTL keep-alive
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Reads the remaining TTL (in ledgers) of a persistent key inside the vault's
+/// contract context.
+fn state_ttl(e: &Env, vault_id: &Address, key: &DataKey) -> u32 {
+    e.as_contract(vault_id, || e.storage().persistent().get_ttl(key))
+}
+
+#[test]
+fn bump_ttl_refreshes_state_before_unlock() {
+    let (e, _owner, client, _token, _sac) = setup_env();
+    let vault_id = client.address.clone();
+
+    // Let the entries age most of the way through their window without any
+    // interaction — well before UNLOCK_LEDGER, so withdraw can't help.
+    let aged = EXTEND_AMOUNT - 10 * 17_280;
+    e.ledger().with_mut(|li| li.sequence_number += aged);
+
+    let before = state_ttl(&e, &vault_id, &DataKey::Owner);
+    assert!(before < 20 * 17_280, "precondition: TTL should have decayed, got {before}");
+
+    // Anyone can call this — no auth set, no address argument.
+    client.bump_ttl();
+
+    let after = state_ttl(&e, &vault_id, &DataKey::Owner);
+    assert!(
+        after >= EXTEND_AMOUNT - 17_280,
+        "TTL should be refreshed to ~EXTEND_AMOUNT, got {after}"
+    );
+    assert!(after > before);
+
+    // UnlockLedger is refreshed too.
+    assert!(state_ttl(&e, &vault_id, &DataKey::UnlockLedger) >= EXTEND_AMOUNT - 17_280);
+}
+
+#[test]
+fn deposit_refreshes_state_ttl() {
+    let (e, owner, client, token_addr, _sac) = setup_env();
+    let vault_id = client.address.clone();
+
+    let aged = EXTEND_AMOUNT - 10 * 17_280;
+    e.ledger().with_mut(|li| li.sequence_number += aged);
+
+    client.deposit(&owner, &token_addr, &DEPOSIT_AMOUNT);
+
+    assert!(state_ttl(&e, &vault_id, &DataKey::Owner) >= EXTEND_AMOUNT - 17_280);
+}
+
+#[test]
+fn bump_ttl_is_permissionless() {
+    let (e, _owner, client, _token, _sac) = setup_env();
+    // Drop every mocked auth: bump_ttl must still succeed.
+    e.set_auths(&[]);
+    client.bump_ttl();
 }
 
 // ────────────────────────────────────────────────────────────────────────────

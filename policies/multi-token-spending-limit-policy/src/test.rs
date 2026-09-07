@@ -434,6 +434,65 @@ fn test_enforce_rejects_stale_price() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #10)")] // InvalidOracleResponse
+fn test_enforce_rejects_negative_oracle_price() {
+    let (e, smart_account, client) = setup_env();
+    let oracle = setup_oracle(&e, ONE_USD);
+    let token = Address::generate(&e);
+
+    let rule =
+        install_policy(&e, &client, &smart_account, &oracle, vec![&e, token.clone()], 1_000, 100);
+
+    // A compromised/misconfigured feed reports a negative price. Left
+    // unchecked this would make `amount_usd` negative and *reduce* the
+    // tracked spend — it must fail closed instead.
+    let oracle_client = MockOracleClient::new(&e, &oracle);
+    oracle_client
+        .set_price(&Some(PriceData { price: -ONE_USD, timestamp: e.ledger().timestamp() }));
+
+    let context = transfer_context(&e, &token, 500);
+    client.enforce(&context, &Vec::new(&e), &rule, &smart_account);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #10)")] // InvalidOracleResponse
+fn test_enforce_rejects_zero_oracle_price() {
+    let (e, smart_account, client) = setup_env();
+    let oracle = setup_oracle(&e, ONE_USD);
+    let token = Address::generate(&e);
+
+    let rule =
+        install_policy(&e, &client, &smart_account, &oracle, vec![&e, token.clone()], 1_000, 100);
+
+    // A zero price would let every transfer consume no limit at all.
+    let oracle_client = MockOracleClient::new(&e, &oracle);
+    oracle_client.set_price(&Some(PriceData { price: 0, timestamp: e.ledger().timestamp() }));
+
+    let context = transfer_context(&e, &token, 500);
+    client.enforce(&context, &Vec::new(&e), &rule, &smart_account);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #10)")] // InvalidOracleResponse
+fn test_enforce_rejects_future_dated_oracle_price() {
+    let (e, smart_account, client) = setup_env();
+    let oracle = setup_oracle(&e, ONE_USD);
+    let token = Address::generate(&e);
+
+    let rule =
+        install_policy(&e, &client, &smart_account, &oracle, vec![&e, token.clone()], 1_000, 100);
+
+    // A future `timestamp` would otherwise slip past the staleness check,
+    // whose `saturating_sub(now, ts)` floors at zero.
+    let oracle_client = MockOracleClient::new(&e, &oracle);
+    oracle_client
+        .set_price(&Some(PriceData { price: ONE_USD, timestamp: e.ledger().timestamp() + 1 }));
+
+    let context = transfer_context(&e, &token, 500);
+    client.enforce(&context, &Vec::new(&e), &rule, &smart_account);
+}
+
+#[test]
 #[should_panic(expected = "Error(Contract, #8)")] // SpendingLimitExceeded
 fn test_enforce_rejects_over_limit() {
     let (e, smart_account, client) = setup_env();
