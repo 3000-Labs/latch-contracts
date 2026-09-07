@@ -1,6 +1,8 @@
 # Almanax Pre-Audit Scan — Triage
 
-- **Scan:** `3K1-Labs/latch-contracts @ f2ee2db` (= `main`; tag `audit-v1` re-pointed here on completion)
+- **Scan:** `3K1-Labs/latch-contracts @ f2ee2db` (was `main` HEAD when the scan ran)
+- **Resolution:** PR [#88](https://github.com/3K1-Labs/latch-contracts/pull/88); the
+  `audit-v1` tag is force-repointed to that PR's merge commit on completion
 - **Run:** 2026-09-04, Almanax project `7191295a-…`, scan `b472be66-…`
 - **Result:** 12 findings — 1 CRITICAL, 2 HIGH, 5 MEDIUM, 4 LOW
 - **Purpose:** intake gate for the external audit. Every finding is dispositioned below:
@@ -79,7 +81,7 @@ second transaction — not `__constructor`.
 
 - **Code:** added a doc comment on `__constructor` in `latch-smart-account/src/lib.rs`
   explaining the host-once semantics (no functional change), so a human reviewer and any
-  re-scan see the rationale inline. Commit: _(pending)_.
+  re-scan see the rationale inline. Commit: PR #88 (https://github.com/3K1-Labs/latch-contracts/pull/88).
 - **Almanax:** dismiss as False Positive with the note above.
 - **Status:** ✅ resolved — no functional change required.
 
@@ -133,7 +135,7 @@ security. OZ's own factory examples don't do it.
 
 - **Code:** added a doc comment on the factory `__constructor`
   (`account-factory/contracts/factory-contract/src/lib.rs`) — no functional change.
-  Commit: _(pending)_.
+  Commit: PR #88 (https://github.com/3K1-Labs/latch-contracts/pull/88).
 - **Almanax:** dismiss as False Positive with the note above.
 - **Status:** ✅ resolved — no functional change required.
 
@@ -201,7 +203,7 @@ on `unlock_ledger`. `bump_ttl()` covers every case without arithmetic that would
 need review; the template's docs value "simpler and easier to audit." A generous sanity
 cap can be added if the auditor prefers.
 
-Commit: _(pending)_.
+Commit: PR #88 (https://github.com/3K1-Labs/latch-contracts/pull/88).
 
 ## #4 / #5 — MEDIUM — Third-party GitHub Actions not pinned to commit SHAs — VALID (hardening)
 
@@ -226,10 +228,15 @@ the commit the previously-floating tag pointed at, so behaviour is unchanged:
 | `actions/checkout` | `@v4` | `@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0` |
 | `dorny/paths-filter` | `@v3` | `@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4` |
 | `actions-rust-lang/setup-rust-toolchain` | `@v1` | `@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1` |
-| `stellar/stellar-cli` | `@v27.1.0` | `@8e402ea28202950b272fbabc34caad4d2f64fe87 # v27.1.0` |
+| `stellar/stellar-cli` | `@v27.1.0` | `@8e402ea28202950b272fbabc34caad4d2f64fe87 # v27.1.0` + `version: "27.1.0"` |
 | `crate-ci/typos` | `@v1.24.5` | `@945d407a5fc9097f020969446a16f581612ab4df # v1.24.5` |
 
-Commit: _(pending)_.
+`stellar/stellar-cli` picks the CLI binary to download from its own git ref, so a SHA
+pin alone makes it request a release named after the SHA (404). The documented
+`version:` input is passed alongside the pin to fix this; SHA, `# vX` comment and
+`version:` are kept in lockstep.
+
+Commit: PR [#88](https://github.com/3K1-Labs/latch-contracts/pull/88).
 
 ## #6 / #9 — MEDIUM / LOW — Workflows run without an explicit least-privilege token — VALID (hardening)
 
@@ -246,7 +253,7 @@ in both only checks out and runs cargo / the typo checker / the WASM build — n
 pushes, comments, or releases — so no job needs an opt-back-in. YAML validated. Same
 change as #4/#5.
 
-Commit: _(pending)_.
+Commit: PR #88 (https://github.com/3K1-Labs/latch-contracts/pull/88).
 
 ## #7 — MEDIUM — Unvalidated oracle price allows spending-limit bypass — TRUE POSITIVE
 
@@ -287,7 +294,7 @@ section were updated to match. Tests added: `test_enforce_rejects_negative_oracl
 `test_enforce_rejects_zero_oracle_price`, `test_enforce_rejects_future_dated_oracle_price`
 (all expect `#10`). 26 tests pass; clippy + fmt clean.
 
-Commit: _(pending)_.
+Commit: PR #88 (https://github.com/3K1-Labs/latch-contracts/pull/88).
 
 ## #8 — MEDIUM — Oracle price sign not validated (enforce call site) — TRUE POSITIVE, DUPLICATE OF #7
 
@@ -327,7 +334,7 @@ No behavioural change. Added a doc comment at each flagged site explaining the
 intentional refresh-on-read (`policies/multi-token-spending-limit-policy/src/lib.rs`
 `get_policy_data` helper; `policies/parameter-scoped-policy/src/conditions.rs`
 `get_conditions`) so a re-scan does not re-raise it. Dismiss both in Almanax with the
-note above. Commit: _(pending)_.
+note above. Commit: PR #88 (https://github.com/3K1-Labs/latch-contracts/pull/88).
 
 ## #11 — LOW — Fixed threshold can diverge from signer set — KNOWN ACCEPTED RISK
 
@@ -365,7 +372,8 @@ and accepted risks #1. Dismiss in Almanax as **Accepted Risk** with the note abo
 
 ## Outcome
 
-All 12 findings resolved on `main` before the audit:
+All 12 findings resolved via PR [#88](https://github.com/3K1-Labs/latch-contracts/pull/88)
+before the audit (25/25 CI checks green, including a fresh Almanax scan of the branch):
 
 | Disposition | Findings | Action |
 |---|---|---|
@@ -391,6 +399,14 @@ regenerated.
 
 ## Tag
 
-`audit-v1` re-pointed from `ace9dbd` to the post-triage commit. `docs/AUDIT_SCOPE.md`
-updated (2026-09-04 note + crate-table note). The "nothing else lands on `main`" rule
-continues from the new tag.
+After PR #88 merges to `main`, the annotated `audit-v1` tag is force-repointed from
+`ace9dbd` to the merge commit and force-pushed to `origin`:
+
+```
+git checkout main && git pull
+git tag -f -a audit-v1 -m "Latch Contracts v1 audit baseline (post-Almanax pre-scan triage)"
+git push --force origin audit-v1
+```
+
+`docs/AUDIT_SCOPE.md` is updated (2026-09-04 note + crate-table note). The "nothing else
+lands on `main`" rule continues from the new tag.
