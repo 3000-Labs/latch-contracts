@@ -79,6 +79,13 @@ pub struct Contract;
 
 #[contractimpl]
 impl Contract {
+    /// Contract constructor — run by the host during `create_contract_v2`
+    /// (no deploy path skips a declared constructor), and not callable
+    /// afterward. `FactoryConfig` is therefore set exactly once, under the
+    /// authority of the deploying transaction; there is no admin, upgrade, or
+    /// pause. The `has(Config)` check below is defensive only — the host
+    /// already guarantees exactly-once — and an uninitialized factory is inert
+    /// (`get_config` fails closed with `MissingConfig`), not hijackable.
     pub fn __constructor(
         env: Env,
         smart_account_wasm_hash: BytesN<32>,

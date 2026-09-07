@@ -26,10 +26,14 @@
 //! - The oracle address is fixed at `install` time and cannot be changed
 //!   afterwards.
 //! - A price is only trusted for `MAX_STALENESS_LEDGERS` worth of ledgers past
-//!   its `timestamp`; anything older is rejected.
+//!   its `timestamp`; anything older is rejected. A price `timestamp` in the
+//!   future is rejected outright.
+//! - Only a strictly positive price is accepted; a zero or negative price is
+//!   rejected rather than being allowed to zero out or subtract from the
+//!   tracked spend.
 //! - The policy fails closed: an oracle call that reverts, a `lastprice` that
-//!   returns `None`, or a stale price all block the transfer rather than
-//!   letting it through.
+//!   returns `None`, a non-positive price, or a stale/future-dated price all
+//!   block the transfer rather than letting it through.
 #![no_std]
 
 use soroban_sdk::{
@@ -77,7 +81,8 @@ pub enum Error {
     /// The spending history reached `MAX_HISTORY_ENTRIES`.
     HistoryCapacityExceeded = 9,
     /// The oracle returned no price for the asset (`lastprice` gave `None`),
-    /// or its `decimals()` value can't be used to build a base-10 divisor.
+    /// a non-positive price, a price timestamped in the future, or a
+    /// `decimals()` value that can't be used to build a base-10 divisor.
     InvalidOracleResponse = 10,
 }
 
@@ -155,6 +160,14 @@ const LEDGER_CLOSE_TIME_SECS: u64 = 5;
 
 /// Loads the stored policy data for a `(smart_account, context_rule)` pair,
 /// refreshing its TTL, or fails closed with [`Error::NotInstalled`].
+///
+/// The TTL refresh runs on every successful read, including the unauthenticated
+/// public `get_policy_data` view. This is intentional and matches the other
+/// policy crates (`session-policy`, `recipient-allowlist-policy`): it only
+/// prolongs an already-installed entry — the caller pays the fee, no state is
+/// created or mutated, and `install` / `enforce` / `uninstall` remain gated by
+/// `smart_account.require_auth()`. Storage expiry is not a security boundary
+/// here.
 fn get_policy_data(e: &Env, context_rule_id: u32, smart_account: &Address) -> PolicyData {
     let key = DataKey::AccountContext(smart_account.clone(), context_rule_id);
     e.storage()

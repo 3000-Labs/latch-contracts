@@ -145,6 +145,15 @@ pub fn emit_conditions_uninstalled(e: &Env, smart_account: Address, context_rule
     ConditionsUninstalled { smart_account, context_rule_id }.publish(e);
 }
 
+/// Reads the stored conditions for a `(smart_account, context_rule)` pair,
+/// refreshing the entry's TTL.
+///
+/// The TTL refresh runs on every successful read, including this
+/// unauthenticated public view. That is intentional and consistent with the
+/// other policy crates: it only prolongs an already-installed entry — the
+/// caller pays the fee, no state is created or mutated, and `install` /
+/// `enforce` / `uninstall` stay gated by `smart_account.require_auth()`.
+/// Storage expiry is not a security boundary here.
 pub fn get_conditions(
     e: &Env,
     context_rule_id: u32,

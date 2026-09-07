@@ -57,6 +57,12 @@ pub struct LatchSmartAccount;
 
 #[contractimpl]
 impl LatchSmartAccount {
+    /// Contract constructor — invoked exactly once by the host as part of
+    /// `create_contract_v2` (`deploy_v2`) and never callable afterward, so it
+    /// needs no "already initialized" guard or `require_auth`: the deploying
+    /// transaction authorizes the whole creation, and the host will not
+    /// dispatch a later invocation to `__constructor`. Installs the initial
+    /// `Default` context rule with the deployer-supplied signers/policies.
     pub fn __constructor(e: &Env, signers: Vec<Signer>, policies: Map<Address, Val>) {
         smart_account::add_context_rule(
             e,

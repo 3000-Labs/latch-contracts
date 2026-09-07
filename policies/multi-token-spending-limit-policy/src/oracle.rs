@@ -56,7 +56,17 @@ pub fn fetch_usd_divisor(e: &Env, oracle_address: &Address) -> i128 {
 }
 
 /// Queries the oracle's `lastprice` for `token`, failing closed if the
-/// oracle call reverts or returns `None` (no price known for that asset).
+/// oracle call reverts, returns `None` (no price known for that asset), or
+/// returns a value that can't be trusted for USD accounting.
+///
+/// A returned `PriceData` is guaranteed to have `price > 0` and a
+/// `timestamp` no later than the current ledger. Both are enforced here
+/// rather than in `enforce`, because a non-positive price would make
+/// `amount_usd` zero or negative downstream (a transfer that consumes no
+/// limit, or one that *reduces* the running total), and a future timestamp
+/// would slip past `enforce`'s staleness check (its `saturating_sub` floors
+/// at zero). A misconfigured or compromised oracle must never be able to
+/// *loosen* the limit.
 ///
 /// Unlike the divisor, this is deliberately *not* cached — a price is only
 /// meaningful at the moment it's read, so `enforce` calls this fresh on
@@ -67,5 +77,12 @@ pub fn fetch_price(e: &Env, oracle_address: &Address, token: Address) -> PriceDa
         &LASTPRICE_FN,
         soroban_sdk::vec![e, Asset::Stellar(token).into_val(e)],
     );
-    price_data.unwrap_or_else(|| panic_with_error!(e, Error::InvalidOracleResponse))
+    let price_data =
+        price_data.unwrap_or_else(|| panic_with_error!(e, Error::InvalidOracleResponse));
+
+    if price_data.price <= 0 || price_data.timestamp > e.ledger().timestamp() {
+        panic_with_error!(e, Error::InvalidOracleResponse)
+    }
+
+    price_data
 }
