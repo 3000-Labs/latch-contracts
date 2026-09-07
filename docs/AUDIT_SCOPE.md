@@ -5,6 +5,14 @@ audit covers everything on `main` as it stands**, at the commit tagged `audit-v1
 document is part of that commit). Nothing else lands on `main` between that tag and the audit
 report except fixes for audit findings.
 
+**Update 2026-09-04:** the audit team requires an Almanax AI pre-scan with every finding
+triaged before the engagement starts. That scan (12 findings) was worked through in
+[`almanax-triage.md`](almanax-triage.md): 3 dismissed as false positives, 2 dismissed as
+informational, 1 dismissed as a pre-existing accepted risk (§Known and accepted risks #1
+below), and **2 real fixes + 4 CI hardening changes applied** to `main`. The `audit-v1`
+tag was re-pointed to the post-triage commit; that commit is the new baseline and the
+"nothing else lands" rule above continues from there.
+
 ## In scope
 
 Every deployable crate in the Cargo workspace. Line counts are non-blank, non-comment Rust in
@@ -28,6 +36,12 @@ Every deployable crate in the Cargo workspace. Line counts are non-blank, non-co
 | `fee-forwarder` | Wrapper over OZ `fee-abstraction` + `access` roles; relayer-sponsored gasless calls | 65 | 15 |
 | `templates/timelock-vault` | User-deployed personal contract | 80 | 14 |
 | `templates/vesting-schedule` | User-deployed personal contract | 242 | 18 |
+
+Counts are as of 2026-09-02. The 2026-09-04 Almanax triage changed two in-scope crates:
+`templates/timelock-vault` gained a permissionless `bump_ttl()` keep-alive (now 17 tests)
+and `policies/multi-token-spending-limit-policy` gained oracle price/timestamp validation
+in `fetch_price` (now 26 tests). See [`almanax-triage.md`](almanax-triage.md) findings #3
+and #7/#8.
 
 **Where to spend the time.** The Latch-original logic is concentrated in `factory-contract`,
 `session-policy`, `parameter-scoped-policy`, `multi-token-spending-limit-policy`,

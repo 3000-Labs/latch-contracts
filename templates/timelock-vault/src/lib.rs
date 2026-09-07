@@ -33,6 +33,20 @@
 //! there is demand, but for a first version immutability is simpler and
 //! easier to audit.
 //!
+//! # State lifetime
+//!
+//! `Owner` and `UnlockLedger` live in **persistent** storage. Their TTL is
+//! refreshed on construction, on every [`deposit()`](TimelockVault::deposit),
+//! on [`withdraw()`](TimelockVault::withdraw), and by the permissionless
+//! [`bump_ttl()`](TimelockVault::bump_ttl). Because `withdraw` cannot run
+//! until `unlock_ledger`, a vault whose lock is longer than `EXTEND_AMOUNT`
+//! (~120 days) and which receives no deposits in the meantime **must** have
+//! `bump_ttl()` called at least once per ~120-day window — otherwise the two
+//! entries are archived before the first withdrawal is possible, and
+//! `withdraw` then traps until they are restored with a separate
+//! `RestoreFootprint`. Anyone (a keeper, the owner's wallet) can call
+//! `bump_ttl()`; it moves no funds.
+//!
 //! # What This Is Not
 //!
 //! - Not a vesting schedule (linear/cliff release).
@@ -108,6 +122,23 @@ const EXTEND_AMOUNT: u32 = 120 * DAY_IN_LEDGERS; // ~120 days
 const TTL_THRESHOLD: u32 = EXTEND_AMOUNT - DAY_IN_LEDGERS;
 
 // ────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Refreshes the TTL of the vault's persistent state (`Owner`,
+/// `UnlockLedger`) so it outlives the lock.
+///
+/// Called from the constructor, `deposit`, `withdraw`, and the public
+/// `bump_ttl`. For a lock longer than `EXTEND_AMOUNT` this has to be invoked
+/// (via `bump_ttl` or a `deposit`) at least once per `EXTEND_AMOUNT` window —
+/// `withdraw` can't reach its own TTL bump until `unlock_ledger`.
+fn extend_state_ttl(e: &Env) {
+    let persistent = e.storage().persistent();
+    persistent.extend_ttl(&DataKey::Owner, TTL_THRESHOLD, EXTEND_AMOUNT);
+    persistent.extend_ttl(&DataKey::UnlockLedger, TTL_THRESHOLD, EXTEND_AMOUNT);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Contract
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -140,9 +171,30 @@ impl TimelockVault {
         e.storage().persistent().set(&DataKey::Owner, &owner);
         e.storage().persistent().set(&DataKey::UnlockLedger, &unlock_ledger);
 
-        // Ensure the config outlives the lock itself.
-        e.storage().persistent().extend_ttl(&DataKey::Owner, TTL_THRESHOLD, EXTEND_AMOUNT);
-        e.storage().persistent().extend_ttl(&DataKey::UnlockLedger, TTL_THRESHOLD, EXTEND_AMOUNT);
+        // Ensure the config outlives the lock itself. For locks longer than
+        // `EXTEND_AMOUNT`, `bump_ttl` (or a `deposit`) must keep it alive
+        // until `unlock_ledger` — see the module-level "State lifetime" note.
+        extend_state_ttl(e);
+    }
+
+    // ── Keep-alive ─────────────────────────────────────────────────────
+
+    /// Extends the TTL of the vault's persistent state (`Owner`,
+    /// `UnlockLedger`) so it survives until withdrawal becomes possible.
+    ///
+    /// Permissionless by design: anyone may pay to keep a vault alive — a
+    /// keeper bot, the owner's wallet, a depositor. It moves no funds and
+    /// changes no parameter, so it takes no authorization.
+    ///
+    /// **Why it exists:** `withdraw` is the only other call that refreshes
+    /// these TTLs, and it cannot run until `unlock_ledger`. A vault whose
+    /// lock is longer than `EXTEND_AMOUNT` (~120 days) would otherwise have
+    /// `Owner` / `UnlockLedger` archived before the first withdrawal is
+    /// possible, which makes `withdraw` trap until they are restored out of
+    /// band. For a lock longer than ~120 days, call this at least once per
+    /// ~120-day window (a `deposit` has the same effect).
+    pub fn bump_ttl(e: &Env) {
+        extend_state_ttl(e);
     }
 
     // ── Deposit ────────────────────────────────────────────────────────
@@ -165,6 +217,10 @@ impl TimelockVault {
 
         let vault_addr = e.current_contract_address();
         token::TokenClient::new(&e, &token).transfer(&from, &vault_addr, &amount);
+
+        // Any deposit also keeps the vault's state alive, so an
+        // actively-funded long-lock vault needs no separate `bump_ttl`.
+        extend_state_ttl(&e);
 
         Deposited { token, from, amount }.publish(&e);
     }
@@ -201,8 +257,7 @@ impl TimelockVault {
         token::TokenClient::new(&e, &token).transfer(&vault_addr, &to, &amount);
 
         // Bump TTLs so the vault stays alive for future withdrawals.
-        e.storage().persistent().extend_ttl(&DataKey::Owner, TTL_THRESHOLD, EXTEND_AMOUNT);
-        e.storage().persistent().extend_ttl(&DataKey::UnlockLedger, TTL_THRESHOLD, EXTEND_AMOUNT);
+        extend_state_ttl(&e);
 
         Withdrawn { token, to, amount }.publish(&e);
     }
