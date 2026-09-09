@@ -6,7 +6,32 @@ not preserved as history. Every entry points at a physically archived copy of th
 under `deployments/artifacts/<contract>-<wasm-hash>/`, so a recorded hash can always be checked
 against the bytes it was computed from (see `deployments/README.md`).
 
-## Testnet — 2026-09-03, source commit `ace9dbd` (contract code identical to tag `audit-v1`)
+**Baseline reconciliation 2026-09-08.** The deployment below is source `ace9dbd`, the
+commit `audit-v1` pointed at until 2026-09-08. The tag has since moved to `6b34ccc` (PR #88,
+the post-Almanax-triage audit baseline — see [`AUDIT_SCOPE.md`](AUDIT_SCOPE.md)). A fresh
+`stellar contract build` was run at both commits (stellar-cli 27.1.0, rustc 1.94.1) to
+establish exactly what a redeploy from the audit commit would change:
+
+- At `ace9dbd`: all 16 recorded hashes below reproduce **byte-for-byte** — the build is
+  deterministic and this deployment record is verified.
+- At `6b34ccc`: **12 of 16 crates are byte-identical** to the record below and need no
+  redeploy — all four verifiers, `threshold-policy`, `weighted-threshold-policy`,
+  `session-policy`, `spending-limit-policy`, `parameter-scoped-policy`,
+  `recipient-allowlist-policy`, `fee-forwarder`, `vesting-schedule`.
+- **4 crates changed** and require a fresh testnet deploy from `6b34ccc` before the audit
+  submission:
+
+  | Contract | Recorded `ace9dbd` (full hash in its section below) | Rebuilt at `6b34ccc` | Why it changed |
+  |---|---|---|---|
+  | Latch Smart Account | `85f4e1d77f4f…` | `47601b58e92847a1ae01bc265dd9e294956662f3dacf50871a7e7b4913342a5d` | Doc-comment on `__constructor` → embedded contract spec only; no executable change |
+  | Account Factory | `26c48c109685…` | `c2a80e2ac337968320c059e414cd9dc76625a576d5b159ac81d24060f8a036e5` | Doc-comment on `__constructor` → embedded contract spec only; no executable change |
+  | Timelock Vault template | `07e04c1a0fdd…` | `195f2070b6f492c1be1f6123edb3a524360b2f23317a20f4933b9b8cf6d4ad63` | Almanax #3 fix: `bump_ttl()` + TTL refresh on deposit |
+  | Multi-Token Spending Limit Policy | `6c481faba9a6…` | `6574578f1ac6508c2826932ae3cd3ffcdb2d78262f7e5ec2a4627f17dbd97a16` | Almanax #7/#8 fix: reject non-positive / future oracle price |
+
+Do not describe the binaries below as the post-fix audit candidate. This record is replaced
+in full when `6b34ccc` (or the final submission commit) is deployed to testnet.
+
+## Testnet — 2026-09-03, source commit `ace9dbd` (`audit-v1` pointed here until 2026-09-08; now at `6b34ccc`)
 
 | Field | Value |
 |---|---|
