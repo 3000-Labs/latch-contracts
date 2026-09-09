@@ -17,7 +17,7 @@ be checked).
 | Production-scope subset | 251 passed; 10 additional tests are the excluded demo verifier |
 | Environment | Local native Soroban test harness, not a network run |
 | Raw log | `docs/audit-evidence/workspace-tests-2026-09-09.log` (submission attachment) |
-| Log SHA-256 | `PENDING` |
+| Log SHA-256 | `a6cdfab065bea99793601903f8fd66917d73d25a7b300894ad357d7ebc971226` |
 
 ## Build and lint run
 
@@ -29,7 +29,7 @@ be checked).
 | Build result | 21 WASM modules built; the 16 in-scope contract hashes are reconciled against the recorded testnet deployment in [BUILD.md](BUILD.md) (12 byte-identical, 4 changed) |
 | Clippy result | clean — no warnings across all 19 workspace crates |
 | Raw log | `docs/audit-evidence/build-clippy-2026-09-09.log` (submission attachment) |
-| Log SHA-256 | `PENDING` |
+| Log SHA-256 | `9f81e941d2d66df486c3abdafc76b331c9b2cd63a1649432f20f37acbeeed764` |
 
 The `multi-token-spending-limit-policy` source changed in PR #90 (the `Tamper.2` fix); its
 7 new tests are included in the 261 above. All other crates are unchanged from PR #88.
