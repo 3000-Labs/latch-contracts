@@ -1,22 +1,23 @@
 # Audit Readiness Test Evidence
 
-All runs below are at the `audit-v1` commit `6b34ccca8488b197bdf09ced67a72e883bb6eb57`,
-on a local machine (stellar-cli 27.1.0, `rustc`/`cargo` 1.94.1). Raw logs are kept under
-`docs/audit-evidence/` and attached to the audit submission package; they are not committed
-to the repo (SHA-256 recorded here so an attached copy can be checked).
+All runs below are at the `audit-v1` baseline — PR #88 (Almanax triage) plus PR #90
+(threat-model `Tamper.2` fix) — on a local machine (stellar-cli 27.1.0, `rustc`/`cargo`
+1.94.1). Raw logs are kept under `docs/audit-evidence/` and attached to the audit submission
+package; they are not committed to the repo (SHA-256 recorded here so an attached copy can
+be checked).
 
 ## Test run
 
 | Field | Value |
 |---|---|
-| Date | 2026-09-08 |
+| Date | 2026-09-09 |
 | Command | `cargo test --workspace --locked` |
 | Exit status | 0 |
-| Result | 254 passed; 0 failed; 0 ignored |
-| Production-scope subset | 244 passed; 10 additional tests are the excluded demo verifier |
+| Result | 261 passed; 0 failed; 0 ignored |
+| Production-scope subset | 251 passed; 10 additional tests are the excluded demo verifier |
 | Environment | Local native Soroban test harness, not a network run |
-| Raw log | `docs/audit-evidence/workspace-tests-2026-09-08.log` (submission attachment) |
-| Log SHA-256 | `e8f7a71fd8d2b8463c91154dd084fa1570493cdda0b7ece0a8cad3b55ddb0833` |
+| Raw log | `docs/audit-evidence/workspace-tests-2026-09-09.log` (submission attachment) |
+| Log SHA-256 | `PENDING` |
 
 ## Build and lint run
 
@@ -28,10 +29,10 @@ to the repo (SHA-256 recorded here so an attached copy can be checked).
 | Build result | 21 WASM modules built; the 16 in-scope contract hashes are reconciled against the recorded testnet deployment in [BUILD.md](BUILD.md) (12 byte-identical, 4 changed) |
 | Clippy result | clean — no warnings across all 19 workspace crates |
 | Raw log | `docs/audit-evidence/build-clippy-2026-09-09.log` (submission attachment) |
-| Log SHA-256 | `8b2c9939dfd5fad09db602d934f4bbc0255ee14944258cd545b0031eb951e2f8` |
+| Log SHA-256 | `PENDING` |
 
-No Rust source changes were present when these runs began; the source SHA above identifies
-the code under test. This packet adds documentation only.
+The `multi-token-spending-limit-policy` source changed in PR #90 (the `Tamper.2` fix); its
+7 new tests are included in the 261 above. All other crates are unchanged from PR #88.
 
 ## Test suite breakdown
 
@@ -41,7 +42,7 @@ the code under test. This packet adds documentation only.
 | Factory | 24 |
 | Ed25519 / P-256 / secp256k1 / WebAuthn | 8 / 19 / 25 / 19 |
 | Session / parameter-scoped / recipient allowlist | 14 / 28 / 8 |
-| Multi-token spending limit | 26 |
+| Multi-token spending limit | 33 |
 | Fee forwarder | 15 |
 | Timelock vault / vesting schedule | 17 / 18 |
 | Threshold / weighted threshold / spending limit wrappers | 0 / 0 / 0 |
@@ -57,7 +58,7 @@ the code under test. This packet adds documentation only.
 | Account satellite creation | Same account suite: `deploy_contract_deploys_real_wasm_and_derives_deterministic_address`, `create_contract_rule_*` | Separates mocked-auth deployment mechanics from auth-context checking; does not prove a complete host-generated, cryptographically signed creation path. |
 | Sponsored calls | [forwarder tests](../fee-forwarder/src/test.rs): `forward_collects_fee_and_invokes_target`, `forward_reverts_fee_collection_when_target_call_fails`, nested-auth and missing-auth cases | Exercises fee/target composition, role gating and rollback in the harness. Does not test the deployed relayer with real account signatures. |
 | Account-deployed vesting contract | [vesting tests](../templates/vesting-schedule/src/test.rs): `test_end_to_end_deployment_and_claim_via_smart_account` | Deploys fixture WASM through an account and checks phased claims with a mock token. Uses `mock_all_auths`; is not proof of signature enforcement. |
-| Oracle-based policy | [multi-token tests](../policies/multi-token-spending-limit-policy/src/test.rs) | Calls a mock oracle for normal and malformed price responses. Does not establish real feed accuracy, mixed token-unit correctness or manipulation resistance. |
+| Oracle-based policy | [multi-token tests](../policies/multi-token-spending-limit-policy/src/test.rs) | Calls a mock oracle for normal and malformed price responses; covers per-token `decimals()` normalization, mixed-decimal windows, dust truncation and the conversion-overflow path (`Tamper.2`). Uses a mock oracle and mock tokens — does not establish real feed accuracy or oracle-manipulation resistance. |
 
 The threshold and weighted-threshold wrappers have no dedicated test suites and no demonstrated
 real-wrapper integration here; factory tests use fixtures. The spending-limit wrapper has no

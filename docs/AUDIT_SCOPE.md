@@ -11,16 +11,17 @@ triaged before the engagement starts. That scan (12 findings) was worked through
 informational, 1 dismissed as a pre-existing accepted risk (§Known and accepted risks #1
 below), and **2 real fixes + 4 CI hardening changes applied** to `main`.
 
-**Baseline update 2026-09-08:** the `audit-v1` tag has been force-repointed from `ace9dbd`
-to `6b34ccca8488b197bdf09ced67a72e883bb6eb57` (the PR #88 post-triage merge, equal to
-`origin/main` HEAD on that date), on both the local repo and `origin`. That commit is the
-audit baseline; the "nothing else lands" rule above runs from there. A fresh
-`stellar contract build` at this commit is byte-reproducible and matches the recorded
-2026-09-03 testnet artifacts for 12 of 16 crates; the 4 that differ (`timelock-vault` and
+**Baseline update 2026-09-08/-09:** the `audit-v1` tag was force-repointed from `ace9dbd`
+(local + `origin`) to track the audit baseline, which is now PR #88 (Almanax triage) plus
+PR #90 (threat-model `Tamper.2` fix in `multi-token-spending-limit-policy`: raw transfer
+amounts are normalized by each token's own `decimals()` before USD pricing, and the
+conversion is `checked_*` rather than saturating). The "nothing else lands" rule runs from
+that commit. The build is byte-reproducible and matches the recorded 2026-09-03 testnet
+artifacts for 12 of 16 crates; the 4 that differ (`timelock-vault` and
 `multi-token-spending-limit-policy` from the fixes, `latch-smart-account` and
 `factory-contract` from non-behavioural doc-comment/spec changes) need a fresh testnet
-deploy from this commit before submission — tracked in [`BUILD.md`](BUILD.md). Threat model
-in [THREAT_MODEL.md](THREAT_MODEL.md); executed test evidence in [TEST_EVIDENCE.md](TEST_EVIDENCE.md).
+deploy before submission — tracked in [`BUILD.md`](BUILD.md). Threat model in
+[THREAT_MODEL.md](THREAT_MODEL.md); executed test evidence in [TEST_EVIDENCE.md](TEST_EVIDENCE.md).
 
 ## In scope
 
@@ -46,11 +47,12 @@ Every deployable crate in the Cargo workspace. Line counts are non-blank, non-co
 | `templates/timelock-vault` | User-deployed personal contract | 80 | 14 |
 | `templates/vesting-schedule` | User-deployed personal contract | 242 | 18 |
 
-Counts are as of 2026-09-02. The 2026-09-04 Almanax triage changed two in-scope crates:
-`templates/timelock-vault` gained a permissionless `bump_ttl()` keep-alive (now 17 tests)
-and `policies/multi-token-spending-limit-policy` gained oracle price/timestamp validation
-in `fetch_price` (now 26 tests). See [`almanax-triage.md`](almanax-triage.md) findings #3
-and #7/#8.
+Counts are as of 2026-09-02. Since then, two in-scope crates changed executable logic:
+`templates/timelock-vault` gained a permissionless `bump_ttl()` keep-alive (Almanax #3; now
+17 tests), and `policies/multi-token-spending-limit-policy` gained oracle price/timestamp
+validation in `fetch_price` (Almanax #7/#8) plus per-token `decimals()` normalization and
+checked USD conversion (threat-model `Tamper.2`, PR #90; now 33 tests). See
+[`almanax-triage.md`](almanax-triage.md) and [`THREAT_MODEL.md`](THREAT_MODEL.md).
 
 **Where to spend the time.** The Latch-original logic is concentrated in `factory-contract`,
 `session-policy`, `parameter-scoped-policy`, `multi-token-spending-limit-policy`,
