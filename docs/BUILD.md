@@ -7,11 +7,11 @@ under `deployments/artifacts/<contract>-<wasm-hash>/`, so a recorded hash can al
 against the bytes it was computed from (see `deployments/README.md`).
 
 **Baseline reconciliation 2026-09-08 / -09.** The deployment below is source `ace9dbd`, the
-commit `audit-v1` pointed at until 2026-09-08. The tag now tracks the audit baseline: PR #88
-(Almanax triage) plus PR #90 (threat-model `Tamper.2` fix) — see [`AUDIT_SCOPE.md`](AUDIT_SCOPE.md).
-A fresh `stellar contract build` was run at `ace9dbd`, at `6b34ccc` (PR #88), and at the
-`Tamper.2` branch (stellar-cli 27.1.0, rustc 1.94.1) to establish exactly what a redeploy
-from the audit baseline changes:
+commit `audit-v1` pointed at until 2026-09-08. The tag now tracks the audit baseline — the
+`main` commit merging PR #88 (Almanax triage), PR #89 (this packet) and PR #90 (threat-model
+`Tamper.2` fix), see [`AUDIT_SCOPE.md`](AUDIT_SCOPE.md). A fresh `stellar contract build` was
+run at `ace9dbd`, at `6b34ccc` (PR #88) and at the `audit-v1` commit (stellar-cli 27.1.0,
+rustc 1.94.1) to establish exactly what a redeploy from the audit baseline changes:
 
 - At `ace9dbd`: all 16 recorded hashes below reproduce **byte-for-byte** — the build is
   deterministic and this deployment record is verified.
@@ -27,10 +27,13 @@ from the audit baseline changes:
   | Latch Smart Account | `85f4e1d77f4f…` | `47601b58e92847a1ae01bc265dd9e294956662f3dacf50871a7e7b4913342a5d` | Doc-comment on `__constructor` → embedded contract spec only; no executable change |
   | Account Factory | `26c48c109685…` | `c2a80e2ac337968320c059e414cd9dc76625a576d5b159ac81d24060f8a036e5` | Doc-comment on `__constructor` → embedded contract spec only; no executable change |
   | Timelock Vault template | `07e04c1a0fdd…` | `195f2070b6f492c1be1f6123edb3a524360b2f23317a20f4933b9b8cf6d4ad63` | Almanax #3 fix: `bump_ttl()` + TTL refresh on deposit |
-  | Multi-Token Spending Limit Policy | `6c481faba9a6…` | `7a027fc794024ee563b8e127f90fef37ece8e10700e622863cbe563748bdc60f` | Almanax #7/#8 fix (reject non-positive / future price) **and** threat-model `Tamper.2` fix: per-token `decimals()` normalization + checked USD conversion |
+  | Multi-Token Spending Limit Policy | `6c481faba9a6…` | `66c3f9af3f1323a3ee788612f2508d11644a3cce3637dd8f865508a8886cec15` | Almanax #7/#8 fix (reject non-positive / future price) **and** threat-model `Tamper.2` fix: per-token `decimals()` normalization + checked USD conversion |
 
 The smart-account and factory rows are non-behavioural doc-comment changes from PR #88; only
-`timelock-vault` and `multi-token-spending-limit-policy` changed executable logic.
+`timelock-vault` and `multi-token-spending-limit-policy` changed executable logic. The
+"Rebuilt at `audit-v1`" hashes are reproducible with `stellar contract build` at the tag
+(same stellar-cli / rustc); doc-comment edits shift the embedded contract spec, so these
+are re-derived from the exact tagged tree, not carried over from a branch build.
 
 Do not describe the binaries below as the post-fix audit candidate. This record is replaced
 in full when the `audit-v1` commit is deployed to testnet.

@@ -1,10 +1,10 @@
 # Audit Readiness Test Evidence
 
-All runs below are at the `audit-v1` baseline — PR #88 (Almanax triage) plus PR #90
-(threat-model `Tamper.2` fix) — on a local machine (stellar-cli 27.1.0, `rustc`/`cargo`
-1.94.1). Raw logs are kept under `docs/audit-evidence/` and attached to the audit submission
-package; they are not committed to the repo (SHA-256 recorded here so an attached copy can
-be checked).
+All runs below are at the `audit-v1` commit — the `main` merge of PR #88 (Almanax triage),
+PR #89 (this packet) and PR #90 (threat-model `Tamper.2` fix) — on a local machine
+(stellar-cli 27.1.0, `rustc`/`cargo` 1.94.1). Raw logs are kept under `docs/audit-evidence/`
+and attached to the audit submission package; they are not committed to the repo (SHA-256
+recorded here so an attached copy can be checked).
 
 ## Test run
 
@@ -17,7 +17,7 @@ be checked).
 | Production-scope subset | 251 passed; 10 additional tests are the excluded demo verifier |
 | Environment | Local native Soroban test harness, not a network run |
 | Raw log | `docs/audit-evidence/workspace-tests-2026-09-09.log` (submission attachment) |
-| Log SHA-256 | `a6cdfab065bea99793601903f8fd66917d73d25a7b300894ad357d7ebc971226` |
+| Log SHA-256 | `de35c50cfbc442cd5a4057067a3d4b7b97e6cd5f890def0e4b6fde0b75b62344` |
 
 ## Build and lint run
 
@@ -29,10 +29,12 @@ be checked).
 | Build result | 21 WASM modules built; the 16 in-scope contract hashes are reconciled against the recorded testnet deployment in [BUILD.md](BUILD.md) (12 byte-identical, 4 changed) |
 | Clippy result | clean — no warnings across all 19 workspace crates |
 | Raw log | `docs/audit-evidence/build-clippy-2026-09-09.log` (submission attachment) |
-| Log SHA-256 | `9f81e941d2d66df486c3abdafc76b331c9b2cd63a1649432f20f37acbeeed764` |
+| Log SHA-256 | `c47506b014d80cb897cbd5080c52c30a1a22cac1b7848593e9f523c82bd02811` |
 
 The `multi-token-spending-limit-policy` source changed in PR #90 (the `Tamper.2` fix); its
-7 new tests are included in the 261 above. All other crates are unchanged from PR #88.
+7 new tests are in the 261 above and its WASM hash at `audit-v1` is
+`66c3f9af3f1323a3ee788612f2508d11644a3cce3637dd8f865508a8886cec15` (see [BUILD.md](BUILD.md)).
+All other crates are unchanged from PR #88.
 
 ## Test suite breakdown
 
