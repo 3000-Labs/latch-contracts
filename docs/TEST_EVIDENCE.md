@@ -1,0 +1,85 @@
+# Audit Readiness Test Evidence
+
+All runs below are at the `audit-v1` commit `6b34ccca8488b197bdf09ced67a72e883bb6eb57`,
+on a local machine (stellar-cli 27.1.0, `rustc`/`cargo` 1.94.1). Raw logs are kept under
+`docs/audit-evidence/` and attached to the audit submission package; they are not committed
+to the repo (SHA-256 recorded here so an attached copy can be checked).
+
+## Test run
+
+| Field | Value |
+|---|---|
+| Date | 2026-09-08 |
+| Command | `cargo test --workspace --locked` |
+| Exit status | 0 |
+| Result | 254 passed; 0 failed; 0 ignored |
+| Production-scope subset | 244 passed; 10 additional tests are the excluded demo verifier |
+| Environment | Local native Soroban test harness, not a network run |
+| Raw log | `docs/audit-evidence/workspace-tests-2026-09-08.log` (submission attachment) |
+| Log SHA-256 | `e8f7a71fd8d2b8463c91154dd084fa1570493cdda0b7ece0a8cad3b55ddb0833` |
+
+## Build and lint run
+
+| Field | Value |
+|---|---|
+| Date | 2026-09-09 |
+| Commands | `stellar contract build` · `cargo clippy --workspace --all-targets --locked` |
+| Exit status | 0 · 0 |
+| Build result | 21 WASM modules built; the 16 in-scope contract hashes are reconciled against the recorded testnet deployment in [BUILD.md](BUILD.md) (12 byte-identical, 4 changed) |
+| Clippy result | clean — no warnings across all 19 workspace crates |
+| Raw log | `docs/audit-evidence/build-clippy-2026-09-09.log` (submission attachment) |
+| Log SHA-256 | `8b2c9939dfd5fad09db602d934f4bbc0255ee14944258cd545b0031eb951e2f8` |
+
+No Rust source changes were present when these runs began; the source SHA above identifies
+the code under test. This packet adds documentation only.
+
+## Test suite breakdown
+
+| Suite | Passed |
+|---|---:|
+| Smart account | 23 |
+| Factory | 24 |
+| Ed25519 / P-256 / secp256k1 / WebAuthn | 8 / 19 / 25 / 19 |
+| Session / parameter-scoped / recipient allowlist | 14 / 28 / 8 |
+| Multi-token spending limit | 26 |
+| Fee forwarder | 15 |
+| Timelock vault / vesting schedule | 17 / 18 |
+| Threshold / weighted threshold / spending limit wrappers | 0 / 0 / 0 |
+| Dummy account / dummy singleton | 0 / 0 |
+| Modified Ed25519 demo (excluded) | 10 |
+
+## Integration coverage and its limits
+
+| Flow | Test evidence | What it establishes / limitations |
+|---|---|---|
+| Deterministic factory deployment | [factory tests](../account-factory/contracts/factory-contract/src/test.rs): `create_account_deploys_at_precomputed_address`, `create_account_is_idempotent`, mixed-signer cases | Exercises deployment using dummy account/singleton WASM. Does not establish real account/verifier/threshold behavior after factory creation. |
+| Account with session and spending policies | [account tests](../latch-smart-account/src/test.rs): `session_signer_allowed_call_succeeds`, disallowed/expiry/removal cases and `session_plus_spending_limit_*` | Tests account-policy composition and auth-check cases. Setup uses mocks; not a real wallet-signed submitted transaction. |
+| Account satellite creation | Same account suite: `deploy_contract_deploys_real_wasm_and_derives_deterministic_address`, `create_contract_rule_*` | Separates mocked-auth deployment mechanics from auth-context checking; does not prove a complete host-generated, cryptographically signed creation path. |
+| Sponsored calls | [forwarder tests](../fee-forwarder/src/test.rs): `forward_collects_fee_and_invokes_target`, `forward_reverts_fee_collection_when_target_call_fails`, nested-auth and missing-auth cases | Exercises fee/target composition, role gating and rollback in the harness. Does not test the deployed relayer with real account signatures. |
+| Account-deployed vesting contract | [vesting tests](../templates/vesting-schedule/src/test.rs): `test_end_to_end_deployment_and_claim_via_smart_account` | Deploys fixture WASM through an account and checks phased claims with a mock token. Uses `mock_all_auths`; is not proof of signature enforcement. |
+| Oracle-based policy | [multi-token tests](../policies/multi-token-spending-limit-policy/src/test.rs) | Calls a mock oracle for normal and malformed price responses. Does not establish real feed accuracy, mixed token-unit correctness or manipulation resistance. |
+
+The threshold and weighted-threshold wrappers have no dedicated test suites and no demonstrated
+real-wrapper integration here; factory tests use fixtures. The spending-limit wrapper has no
+in-crate tests but account composition tests exercise spending-limit behavior. No count in this
+document is labeled “number of integration tests”: the total includes unit and cross-contract
+tests together.
+
+## Reproduction and additional evidence
+
+From the workspace root at the source revision above, run:
+
+```sh
+cargo test --workspace --locked
+```
+
+The lockfile and checked-in test WASM are inputs to this run. Tests that load those binaries
+do not by themselves prove they match current Rust source; build/reconcile fixture provenance
+when source changes. CI configuration is in [rust.yml](../.github/workflows/rust.yml).
+
+Run at this commit and recorded above: `cargo test`, `stellar contract build`, `cargo clippy`.
+**Not** run in this pass, and still required for the submission: a fresh security scan
+(Almanax rescan — see [almanax-triage.md](almanax-triage.md); Scout is blocked, see
+[scout-triage.md](scout-triage.md)) and any on-network transaction, including the fresh
+testnet deploy of the 4 changed contracts. Also record the CI run URL for the final
+submission revision. Open test-coverage work is mapped to threats in [THREAT_MODEL.md](THREAT_MODEL.md).
