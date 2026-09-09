@@ -22,7 +22,7 @@
 //! Both `10^oracle_decimals` (from the oracle's `decimals()`) and each token's
 //! `10^token_decimals` (from the token's own `decimals()`) are queried once at
 //! install time and cached. Without the per-token divisor a 7-decimal token
-//! would be mis-priced by 10^7 against the cap; every allowed token is
+//! would be mispriced by 10^7 against the cap; every allowed token is
 //! normalized to a whole-token count before pricing, so tokens with different
 //! decimals share one cap correctly.
 //!
@@ -109,7 +109,7 @@ pub enum Error {
     InvalidTokenResponse = 11,
     /// Converting a raw transfer amount to USD overflowed `i128`
     /// (`amount * price` before scaling down). Fails closed rather than
-    /// wrapping or saturating to a value that could mis-state the spend.
+    /// wrapping or saturating to a value that could misstate the spend.
     AmountConversionOverflow = 12,
 }
 
@@ -260,8 +260,8 @@ impl Policy for MultiTokenSpendingLimitPolicy {
     ///   for this smart account and context rule.
     /// * [`Error::InvalidOracleResponse`] - When the oracle's `decimals()`
     ///   can't be used to build a base-10 divisor.
-    /// * [`Error::InvalidTokenResponse`] - When an allowed token's
-    ///   `decimals()` reverts or can't be used to build a base-10 divisor.
+    /// * [`Error::InvalidTokenResponse`] - When an allowed token's `decimals()`
+    ///   reverts or can't be used to build a base-10 divisor.
     fn install(
         e: &Env,
         install_params: Self::AccountParams,
